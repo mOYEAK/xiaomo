@@ -1,0 +1,10 @@
+name = "personal-agent"
+main = "src/index.ts"
+compatibility_date = "2026-06-03"
+
+[vars]
+WX_CORP_ID = ""
+WX_APP_SECRET = ""
+WX_AGENT_ID = ""
+WX_TOKEN = ""
+WX_ENCODING_AES_KEY = ""
