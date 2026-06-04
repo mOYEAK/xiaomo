@@ -1,4 +1,8 @@
-import type { Env } from "./index";
+interface WecomEnv {
+  WX_CORP_ID: string;
+  WX_APP_SECRET: string;
+  WX_AGENT_ID: string;
+}
 
 interface AccessTokenResponse {
   errcode?: number;
@@ -15,7 +19,7 @@ interface SendMessageResponse {
   invalidtag?: string;
 }
 
-export async function getWecomAccessToken(env: Env): Promise<string> {
+export async function getWecomAccessToken(env: WecomEnv): Promise<string> {
   const url = new URL("https://qyapi.weixin.qq.com/cgi-bin/gettoken");
   url.searchParams.set("corpid", env.WX_CORP_ID);
   url.searchParams.set("corpsecret", env.WX_APP_SECRET);
@@ -30,7 +34,11 @@ export async function getWecomAccessToken(env: Env): Promise<string> {
   return payload.access_token;
 }
 
-export async function sendWecomTextMessage(env: Env, toUser: string, content: string): Promise<void> {
+export async function sendWecomTextMessage(
+  env: WecomEnv,
+  toUser: string,
+  content: string,
+): Promise<void> {
   const accessToken = await getWecomAccessToken(env);
   const url = new URL("https://qyapi.weixin.qq.com/cgi-bin/message/send");
   url.searchParams.set("access_token", accessToken);

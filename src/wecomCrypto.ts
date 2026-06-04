@@ -68,7 +68,7 @@ export function parseTextMessageXml(xmlText: string): WecomTextMessage {
   };
 }
 
-async function createMessageSignature(
+export async function createMessageSignature(
   token: string,
   timestamp: string,
   nonce: string,

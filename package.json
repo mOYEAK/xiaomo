@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "verify:mp": "node scripts/verify-mp.mjs",
+    "verify:wecom": "node scripts/verify-wecom.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
