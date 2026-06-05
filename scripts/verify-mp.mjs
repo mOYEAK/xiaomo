@@ -8,6 +8,9 @@ const xmlParser = new XMLParser({
   trimValues: false,
 });
 
+const sampleText = "\u4f60\u597d";
+const passiveReply = "\u6536\u5230\u6d4b\u8bd5\u6d88\u606f\uff1a\u4f60\u597d";
+
 function main() {
   verifyUrlSignature();
   verifyTextMessageParsing();
@@ -33,7 +36,7 @@ function verifyTextMessageParsing() {
       <FromUserName><![CDATA[o_user]]></FromUserName>
       <CreateTime>1710000000</CreateTime>
       <MsgType><![CDATA[text]]></MsgType>
-      <Content><![CDATA[你好]]></Content>
+      <Content><![CDATA[${sampleText}]]></Content>
       <MsgId>1234567890</MsgId>
     </xml>
   `);
@@ -41,7 +44,7 @@ function verifyTextMessageParsing() {
   assert.equal(message.toUserName, "gh_app");
   assert.equal(message.fromUserName, "o_user");
   assert.equal(message.msgType, "text");
-  assert.equal(message.content, "你好");
+  assert.equal(message.content, sampleText);
 }
 
 function verifyTextReplyXml() {
@@ -50,16 +53,16 @@ function verifyTextReplyXml() {
       toUserName: "gh_app",
       fromUserName: "o_user",
       msgType: "text",
-      content: "你好",
+      content: sampleText,
     },
-    "收到测试消息：你好",
+    passiveReply,
   );
   const root = parseXmlRoot(reply);
 
   assert.equal(String(root.ToUserName), "o_user");
   assert.equal(String(root.FromUserName), "gh_app");
   assert.equal(String(root.MsgType), "text");
-  assert.equal(String(root.Content), "收到测试消息：你好");
+  assert.equal(String(root.Content), passiveReply);
 }
 
 function createSha1Signature(...parts) {

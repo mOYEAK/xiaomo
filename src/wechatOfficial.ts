@@ -11,6 +11,7 @@ const xmlParser = new XMLParser({
 
 export interface OfficialAccountEnv {
   MP_APP_ID?: string;
+  MP_APP_SECRET?: string;
   MP_TOKEN: string;
   MP_ENCODING_AES_KEY?: string;
 }

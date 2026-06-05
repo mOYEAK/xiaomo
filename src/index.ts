@@ -1,148 +1,56 @@
+import { handleMpRequest } from "./mpHandler";
+import type { SupabaseEnv } from "./reminderStore";
+import type { OfficialAccountEnv } from "./wechatOfficial";
+import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
 import {
-  buildEmptyReply,
-  buildTextReplyXml,
-  decryptOfficialAccountMessage,
-  parseEncryptedXml,
-  parseOfficialAccountTextMessage,
-  verifyMessageSignature,
-  verifyPlainSignature,
-  type OfficialAccountEnv,
-} from "./wechatOfficial";
+  handleChatApi,
+  handleChatPage,
+  handleDueRemindersApi,
+  handleMarkReminderSentApi,
+} from "./webChat";
 
-const TEST_REPLY_PREFIX = "\u6536\u5230\u6d4b\u8bd5\u6d88\u606f\uff1a";
-
-export interface Env extends OfficialAccountEnv {}
+export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv {}
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "GET") {
-      return handleGetVerify(request, env);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+
+    console.info("Incoming channel request.", {
+      method: request.method,
+      path: url.pathname,
+      queryKeys: [...url.searchParams.keys()],
+    });
+
+    if (url.pathname === "/mp") {
+      return handleMpRequest(request, env, ctx);
     }
 
-    if (request.method === "POST") {
-      return handlePostMessage(request, env);
+    if (url.pathname === "/wecom") {
+      return handleWecomRequest(request, env, ctx);
     }
 
-    return new Response("Method Not Allowed", { status: 405 });
+    if (url.pathname === "/chat") {
+      return handleChatPage();
+    }
+
+    if (url.pathname === "/api/chat") {
+      return handleChatApi(request, env);
+    }
+
+    if (url.pathname === "/api/reminders/due") {
+      return handleDueRemindersApi(request, env);
+    }
+
+    const markReminderSentMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/mark-sent$/);
+
+    if (markReminderSentMatch) {
+      return handleMarkReminderSentApi(request, env, decodeURIComponent(markReminderSentMatch[1]));
+    }
+
+    if (url.pathname === "/") {
+      return new Response("Personal Agent Worker is running. Use /chat, /api/chat, /mp or /wecom.");
+    }
+
+    return new Response("Not Found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
-
-async function handleGetVerify(request: Request, env: Env): Promise<Response> {
-  try {
-    const url = new URL(request.url);
-    const signature = readRequiredSearchParam(url, "signature");
-    const timestamp = readRequiredSearchParam(url, "timestamp");
-    const nonce = readRequiredSearchParam(url, "nonce");
-    const echostr = readRequiredSearchParam(url, "echostr");
-    const verified = await verifyPlainSignature(env.MP_TOKEN, timestamp, nonce, signature);
-
-    if (!verified) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    return new Response(echostr, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-    });
-  } catch (error) {
-    console.warn("Failed to verify WeChat Official Account URL.", {
-      error: toSafeErrorMessage(error),
-    });
-
-    return new Response("Forbidden", { status: 403 });
-  }
-}
-
-async function handlePostMessage(request: Request, env: Env): Promise<Response> {
-  try {
-    const url = new URL(request.url);
-    const timestamp = readRequiredSearchParam(url, "timestamp");
-    const nonce = readRequiredSearchParam(url, "nonce");
-    const xmlText = await request.text();
-    const plaintextXml = await resolveMessageXml(url, xmlText, env, timestamp, nonce);
-    const message = parseOfficialAccountTextMessage(plaintextXml);
-
-    if (message.msgType !== "text") {
-      console.info("Ignored unsupported WeChat Official Account message type.", {
-        fromUser: message.fromUserName,
-        msgType: message.msgType,
-      });
-
-      return buildEmptyReply();
-    }
-
-    const replyXml = buildTextReplyXml(message, `${TEST_REPLY_PREFIX}${message.content}`);
-
-    return new Response(replyXml, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/xml; charset=utf-8",
-      },
-    });
-  } catch (error) {
-    console.warn("Failed to process WeChat Official Account POST message.", {
-      error: toSafeErrorMessage(error),
-    });
-
-    return buildEmptyReply();
-  }
-}
-
-async function resolveMessageXml(
-  url: URL,
-  xmlText: string,
-  env: Env,
-  timestamp: string,
-  nonce: string,
-): Promise<string> {
-  if (url.searchParams.get("encrypt_type") !== "aes") {
-    const signature = readRequiredSearchParam(url, "signature");
-    const verified = await verifyPlainSignature(env.MP_TOKEN, timestamp, nonce, signature);
-
-    if (!verified) {
-      throw new Error("Invalid WeChat Official Account plaintext signature.");
-    }
-
-    return xmlText;
-  }
-
-  if (!env.MP_APP_ID || !env.MP_ENCODING_AES_KEY) {
-    throw new Error("Encrypted WeChat Official Account messages require MP_APP_ID and MP_ENCODING_AES_KEY.");
-  }
-
-  const msgSignature = readRequiredSearchParam(url, "msg_signature");
-  const encrypted = parseEncryptedXml(xmlText);
-  const verified = await verifyMessageSignature(
-    env.MP_TOKEN,
-    timestamp,
-    nonce,
-    encrypted,
-    msgSignature,
-  );
-
-  if (!verified) {
-    throw new Error("Invalid WeChat Official Account encrypted message signature.");
-  }
-
-  return decryptOfficialAccountMessage(encrypted, env.MP_ENCODING_AES_KEY, env.MP_APP_ID);
-}
-
-function readRequiredSearchParam(url: URL, key: string): string {
-  const value = url.searchParams.get(key);
-
-  if (!value) {
-    throw new Error(`Missing required search parameter: ${key}.`);
-  }
-
-  return value;
-}
-
-function toSafeErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
