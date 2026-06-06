@@ -5,7 +5,9 @@ import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
 import {
   handleChatApi,
   handleChatPage,
+  handleCancelReminderApi,
   handleDueRemindersApi,
+  handleRemindersApi,
   handleMarkReminderSentApi,
 } from "./webChat";
 
@@ -39,6 +41,16 @@ export default {
 
     if (url.pathname === "/api/reminders/due") {
       return handleDueRemindersApi(request, env);
+    }
+
+    if (url.pathname === "/api/reminders") {
+      return handleRemindersApi(request, env);
+    }
+
+    const cancelReminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/cancel$/);
+
+    if (cancelReminderMatch) {
+      return handleCancelReminderApi(request, env, decodeURIComponent(cancelReminderMatch[1]));
     }
 
     const markReminderSentMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/mark-sent$/);

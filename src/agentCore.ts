@@ -23,9 +23,18 @@ export interface AgentRuntime {
   now?: Date;
 }
 
-export type AgentRoute = "web_summary" | "reminder" | "weather" | "search" | "chat";
+export type AgentRoute =
+  | "web_summary"
+  | "reminder"
+  | "reminder_list"
+  | "reminder_cancel"
+  | "weather"
+  | "search"
+  | "chat";
 
 const urlPattern = /https?:\/\/[^\s]+/i;
+const reminderListPattern = /(\u67e5\u770b|\u5217\u51fa|\u6709\u54ea\u4e9b|\u770b\u770b).*(\u63d0\u9192|\u5f85\u529e)|^\s*(\u6211\u7684)?\u63d0\u9192(\u5217\u8868)?\s*$/;
+const reminderCancelPattern = /(\u53d6\u6d88|\u5220\u9664|\u5220\u6389).*\u63d0\u9192/;
 const reminderTriggerPattern = /(\u63d0\u9192\u6211|\u63d0\u9192|\u8bb0\u5f97|\u5230\u65f6\u5019)/;
 const reminderPattern =
   /(\u63d0\u9192\u6211|\u63d0\u9192|\u8bb0\u5f97|\u5230\u65f6\u5019|\u4eca\u665a|\u660e\u5929|\u540e\u5929|\u4e0b\u5468|\u4e0a\u5348|\u4e0b\u5348|\u665a\u4e0a|\u65e9\u4e0a|[0-9\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]+\s*(\u70b9|\u65f6))/;
@@ -50,6 +59,14 @@ export async function runAgent(input: AgentInput, runtime: AgentRuntime = {}): P
     return handleReminderRoute(input, runtime);
   }
 
+  if (route === "reminder_list") {
+    return handleReminderListRoute(input, runtime);
+  }
+
+  if (route === "reminder_cancel") {
+    return handleReminderCancelRoute(input, runtime);
+  }
+
   return {
     route,
     reply: buildPlaceholderReply(route, text),
@@ -59,6 +76,14 @@ export async function runAgent(input: AgentInput, runtime: AgentRuntime = {}): P
 export function routeMessage(text: string): AgentRoute {
   if (urlPattern.test(text)) {
     return "web_summary";
+  }
+
+  if (reminderCancelPattern.test(text)) {
+    return "reminder_cancel";
+  }
+
+  if (reminderListPattern.test(text)) {
+    return "reminder_list";
   }
 
   if (reminderTriggerPattern.test(text)) {
@@ -106,6 +131,64 @@ async function handleReminderRoute(input: AgentInput, runtime: AgentRuntime): Pr
   };
 }
 
+async function handleReminderListRoute(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput> {
+  if (!runtime.reminderStore) {
+    return {
+      route: "reminder_list",
+      reply:
+        "\u63d0\u9192\u5b58\u50a8\u8fd8\u6ca1\u6709\u914d\u7f6e\uff0c\u6682\u65f6\u4e0d\u80fd\u67e5\u770b\u63d0\u9192\u5217\u8868\u3002",
+    };
+  }
+
+  const reminders = await runtime.reminderStore.listReminders(input.userId, "pending");
+
+  if (!reminders.length) {
+    return {
+      route: "reminder_list",
+      reply: "\u4f60\u73b0\u5728\u6ca1\u6709\u5f85\u63d0\u9192\u7684\u4e8b\u3002",
+    };
+  }
+
+  const lines = reminders
+    .slice(0, 10)
+    .map((reminder, index) => `${index + 1}. ${formatReminderTime(reminder.target_time)} ${reminder.content}`);
+
+  return {
+    route: "reminder_list",
+    reply: `\u4f60\u7684\u5f85\u63d0\u9192\uff1a\n${lines.join("\n")}`,
+  };
+}
+
+async function handleReminderCancelRoute(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput> {
+  if (!runtime.reminderStore) {
+    return {
+      route: "reminder_cancel",
+      reply:
+        "\u63d0\u9192\u5b58\u50a8\u8fd8\u6ca1\u6709\u914d\u7f6e\uff0c\u6682\u65f6\u4e0d\u80fd\u53d6\u6d88\u63d0\u9192\u3002",
+    };
+  }
+
+  const reminders = await runtime.reminderStore.listReminders(input.userId, "pending");
+
+  if (!reminders.length) {
+    return {
+      route: "reminder_cancel",
+      reply: "\u4f60\u73b0\u5728\u6ca1\u6709\u53ef\u53d6\u6d88\u7684\u5f85\u63d0\u9192\u3002",
+    };
+  }
+
+  const lines = reminders
+    .slice(0, 10)
+    .map((reminder, index) => `${index + 1}. ${formatReminderTime(reminder.target_time)} ${reminder.content}`);
+
+  return {
+    route: "reminder_cancel",
+    reply: `\u4e0b\u9762\u662f\u53ef\u53d6\u6d88\u7684\u5f85\u63d0\u9192\uff1a\n${lines.join(
+      "\n",
+    )}\n\n\u8bf7\u5728\u53f3\u4fa7\u63d0\u9192\u5217\u8868\u91cc\u70b9\u201c\u53d6\u6d88\u201d\u3002`,
+  };
+}
+
 function buildReminderParseFailureReply(parsed: ReminderParseResult & { ok: false }): string {
   if (parsed.reason === "missing_content") {
     return "\u6211\u770b\u5230\u4e86\u63d0\u9192\u65f6\u95f4\uff0c\u4f46\u8fd8\u4e0d\u77e5\u9053\u8981\u63d0\u9192\u4f60\u505a\u4ec0\u4e48\u3002\u53ef\u4ee5\u8fd9\u6837\u8bf4\uff1a\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167\u3002";
@@ -120,6 +203,10 @@ function buildPlaceholderReply(route: AgentRoute, text: string): string {
       return "\u6211\u8bc6\u522b\u5230\u8fd9\u662f\u4e00\u6761\u7f51\u9875\u94fe\u63a5\u8bf7\u6c42\u3002\u4e0b\u4e00\u6b65\u4f1a\u63a5\u5165 Jina Reader \u548c LLM \u505a\u7f51\u9875\u603b\u7ed3\u3002";
     case "reminder":
       return "\u6211\u8bc6\u522b\u5230\u8fd9\u662f\u4e00\u4e2a\u63d0\u9192\u8bf7\u6c42\u3002";
+    case "reminder_list":
+      return "\u6211\u8bc6\u522b\u5230\u8fd9\u662f\u67e5\u770b\u63d0\u9192\u5217\u8868\u7684\u8bf7\u6c42\u3002";
+    case "reminder_cancel":
+      return "\u6211\u8bc6\u522b\u5230\u8fd9\u662f\u53d6\u6d88\u63d0\u9192\u7684\u8bf7\u6c42\u3002";
     case "weather":
       return "\u6211\u8bc6\u522b\u5230\u8fd9\u662f\u4e00\u4e2a\u5929\u6c14\u67e5\u8be2\u8bf7\u6c42\u3002\u4e0b\u4e00\u6b65\u4f1a\u63a5\u5165\u5929\u6c14 API\uff0c\u5e76\u7ed9\u51fa\u6e29\u5ea6\u3001\u964d\u96e8\u548c\u51fa\u95e8\u5efa\u8bae\u3002";
     case "search":

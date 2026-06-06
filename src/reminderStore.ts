@@ -19,10 +19,14 @@ export interface ReminderRecord {
   sent_at?: string | null;
 }
 
+export type ReminderStatus = ReminderRecord["status"];
+
 export interface ReminderStore {
   createReminder(userId: string, reminder: ParsedReminder): Promise<ReminderRecord>;
+  listReminders(userId: string, status?: ReminderStatus): Promise<ReminderRecord[]>;
   listDueReminders(userId: string, now?: Date): Promise<ReminderRecord[]>;
   markReminderSent(id: string, now?: Date): Promise<void>;
+  cancelReminder(id: string, now?: Date): Promise<void>;
 }
 
 export function hasSupabaseConfig(env: SupabaseEnv): boolean {
@@ -62,25 +66,26 @@ export function createSupabaseReminderStore(env: SupabaseEnv): ReminderStore {
       return record;
     },
 
+    async listReminders(userId, status) {
+      const url = createReminderListUrl(baseUrl);
+      url.searchParams.set("user_id", `eq.${userId}`);
+
+      if (status) {
+        url.searchParams.set("status", `eq.${status}`);
+      }
+
+      const response = await fetch(url, {
+        headers: buildHeaders(serviceRoleKey),
+      });
+
+      return readJsonResponse<ReminderRecord[]>(response);
+    },
+
     async listDueReminders(userId, now = new Date()) {
-      const url = new URL(`${baseUrl}/rest/v1/reminders`);
-      url.searchParams.set("select", [
-        "id",
-        "user_id",
-        "content",
-        "source_message",
-        "target_time",
-        "timezone",
-        "status",
-        "retry_count",
-        "created_at",
-        "updated_at",
-        "sent_at",
-      ].join(","));
+      const url = createReminderListUrl(baseUrl);
       url.searchParams.set("user_id", `eq.${userId}`);
       url.searchParams.set("status", "eq.pending");
       url.searchParams.set("target_time", `lte.${now.toISOString()}`);
-      url.searchParams.set("order", "target_time.asc");
 
       const response = await fetch(url, {
         headers: buildHeaders(serviceRoleKey),
@@ -107,15 +112,56 @@ export function createSupabaseReminderStore(env: SupabaseEnv): ReminderStore {
         await throwSupabaseError(response);
       }
     },
+
+    async cancelReminder(id, now = new Date()) {
+      const url = new URL(`${baseUrl}/rest/v1/reminders`);
+      url.searchParams.set("id", `eq.${id}`);
+      url.searchParams.set("status", "eq.pending");
+
+      const response = await fetch(url, {
+        method: "PATCH",
+        headers: buildHeaders(serviceRoleKey, "return=minimal"),
+        body: JSON.stringify({
+          status: "cancelled",
+          updated_at: now.toISOString(),
+        }),
+      });
+
+      if (!response.ok) {
+        await throwSupabaseError(response);
+      }
+    },
   };
+}
+
+function createReminderListUrl(baseUrl: string): URL {
+  const url = new URL(`${baseUrl}/rest/v1/reminders`);
+  url.searchParams.set("select", [
+    "id",
+    "user_id",
+    "content",
+    "source_message",
+    "target_time",
+    "timezone",
+    "status",
+    "retry_count",
+    "created_at",
+    "updated_at",
+    "sent_at",
+  ].join(","));
+  url.searchParams.set("order", "target_time.asc");
+  return url;
 }
 
 function buildHeaders(serviceRoleKey: string, prefer?: string): HeadersInit {
   const headers: Record<string, string> = {
     apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
     "Content-Type": "application/json",
   };
+
+  if (serviceRoleKey.startsWith("eyJ")) {
+    headers.Authorization = `Bearer ${serviceRoleKey}`;
+  }
 
   if (prefer) {
     headers.Prefer = prefer;

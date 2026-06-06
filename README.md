@@ -74,8 +74,14 @@ https://personal-agent.ye344136941.workers.dev/api/chat
 Due reminder API:
 https://personal-agent.ye344136941.workers.dev/api/reminders/due?userId=web-user
 
+Reminder list API:
+https://personal-agent.ye344136941.workers.dev/api/reminders?userId=web-user&status=pending
+
 Mark reminder as shown:
 POST https://personal-agent.ye344136941.workers.dev/api/reminders/{id}/mark-sent
+
+Cancel reminder:
+POST https://personal-agent.ye344136941.workers.dev/api/reminders/{id}/cancel
 
 WeChat Official Account URL:
 https://personal-agent.ye344136941.workers.dev/mp
@@ -139,6 +145,7 @@ Current routes:
 
 - URL messages route to future web summarization.
 - reminder-like messages create Supabase reminders when H5 reminder storage is configured.
+- reminder list/cancel messages return the current pending reminders and point users to the H5 controls.
 - weather messages route to future weather API.
 - search messages route to future web search.
 - everything else routes to placeholder chat.
