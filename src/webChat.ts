@@ -1,11 +1,18 @@
 import { runAgent } from "./agentCore";
 import {
+  createOpenAiCompatibleLlmClient,
+  hasLlmConfig,
+  type LlmEnv,
+} from "./llmClient";
+import {
   createSupabaseReminderStore,
   hasSupabaseConfig,
   type ReminderRecord,
   type ReminderStatus,
   type SupabaseEnv,
 } from "./reminderStore";
+
+export interface ChatEnv extends SupabaseEnv, LlmEnv {}
 
 interface ChatRequestBody {
   userId?: unknown;
@@ -21,7 +28,7 @@ export async function handleChatPage(): Promise<Response> {
   });
 }
 
-export async function handleChatApi(request: Request, env: SupabaseEnv): Promise<Response> {
+export async function handleChatApi(request: Request, env: ChatEnv): Promise<Response> {
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method Not Allowed" }, 405);
   }
@@ -48,6 +55,7 @@ export async function handleChatApi(request: Request, env: SupabaseEnv): Promise
       channel: "web",
     },
     {
+      llmClient: hasLlmConfig(env) ? createOpenAiCompatibleLlmClient(env) : undefined,
       reminderStore: hasSupabaseConfig(env) ? createSupabaseReminderStore(env) : undefined,
     },
   );
@@ -625,6 +633,7 @@ function buildChatHtml(): string {
       addMessage("user", value);
       text.value = "";
       send.disabled = true;
+      status.textContent = "正在思考...";
 
       try {
         const response = await fetch("/api/chat", {
@@ -645,6 +654,7 @@ function buildChatHtml(): string {
         addMessage("agent", "网络请求失败，请稍后再试。");
       } finally {
         send.disabled = false;
+        status.textContent = "网页提醒已开启";
         text.focus();
       }
     });

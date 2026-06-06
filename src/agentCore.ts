@@ -3,6 +3,7 @@ import {
   parseReminderRequest,
   type ReminderParseResult,
 } from "./reminderParser";
+import type { LlmClient } from "./llmClient";
 import type { ReminderStore } from "./reminderStore";
 
 export type AgentChannel = "web" | "mp" | "wecom";
@@ -19,6 +20,7 @@ export interface AgentOutput {
 }
 
 export interface AgentRuntime {
+  llmClient?: LlmClient;
   reminderStore?: ReminderStore;
   now?: Date;
 }
@@ -65,6 +67,10 @@ export async function runAgent(input: AgentInput, runtime: AgentRuntime = {}): P
 
   if (route === "reminder_cancel") {
     return handleReminderCancelRoute(input, runtime);
+  }
+
+  if (route === "chat") {
+    return handleChatRoute(input, runtime);
   }
 
   return {
@@ -189,12 +195,55 @@ async function handleReminderCancelRoute(input: AgentInput, runtime: AgentRuntim
   };
 }
 
+async function handleChatRoute(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput> {
+  if (!runtime.llmClient) {
+    return {
+      route: "chat",
+      reply:
+        "\u666e\u901a\u5bf9\u8bdd\u8fd8\u6ca1\u6709\u914d\u7f6e LLM\u3002\u8bf7\u5148\u914d\u7f6e LLM_API_KEY\u3001LLM_BASE_URL \u548c LLM_MODEL\u3002",
+    };
+  }
+
+  try {
+    const reply = await runtime.llmClient.complete([
+      {
+        role: "system",
+        content:
+          "\u4f60\u662f\u4e00\u4e2a\u4e2d\u6587\u4e2a\u4eba\u751f\u6d3b\u52a9\u7406\u3002\u56de\u7b54\u8981\u51c6\u786e\u3001\u7b80\u6d01\u3001\u53cb\u597d\uff0c\u5e76\u4f18\u5148\u7ed9\u51fa\u53ef\u6267\u884c\u7684\u5efa\u8bae\u3002\u4e0d\u8981\u58f0\u79f0\u5df2\u6267\u884c\u4f60\u6ca1\u6709\u5de5\u5177\u80fd\u529b\u5b8c\u6210\u7684\u64cd\u4f5c\u3002",
+      },
+      {
+        role: "user",
+        content: input.text.trim(),
+      },
+    ]);
+
+    return {
+      route: "chat",
+      reply,
+    };
+  } catch (error) {
+    console.error("LLM chat failed.", {
+      error: toSafeErrorMessage(error),
+    });
+
+    return {
+      route: "chat",
+      reply:
+        "\u6211\u6682\u65f6\u65e0\u6cd5\u5b8c\u6210\u8fd9\u6b21 AI \u5bf9\u8bdd\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002",
+    };
+  }
+}
+
 function buildReminderParseFailureReply(parsed: ReminderParseResult & { ok: false }): string {
   if (parsed.reason === "missing_content") {
     return "\u6211\u770b\u5230\u4e86\u63d0\u9192\u65f6\u95f4\uff0c\u4f46\u8fd8\u4e0d\u77e5\u9053\u8981\u63d0\u9192\u4f60\u505a\u4ec0\u4e48\u3002\u53ef\u4ee5\u8fd9\u6837\u8bf4\uff1a\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167\u3002";
   }
 
   return "\u6211\u8fd8\u6ca1\u6709\u8bc6\u522b\u5230\u5177\u4f53\u65f6\u95f4\u3002\u53ef\u4ee5\u8fd9\u6837\u8bf4\uff1a\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167\u3002";
+}
+
+function toSafeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function buildPlaceholderReply(route: AgentRoute, text: string): string {

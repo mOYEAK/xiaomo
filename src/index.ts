@@ -1,4 +1,5 @@
 import { handleMpRequest } from "./mpHandler";
+import type { LlmEnv } from "./llmClient";
 import type { SupabaseEnv } from "./reminderStore";
 import type { OfficialAccountEnv } from "./wechatOfficial";
 import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
@@ -11,7 +12,7 @@ import {
   handleMarkReminderSentApi,
 } from "./webChat";
 
-export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv {}
+export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv {}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

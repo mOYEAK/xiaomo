@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy",
     "build:verify": "tsc --outDir dist/verify --rootDir src --noEmit false && node scripts/patch-verify-imports.mjs",
     "verify:agent": "npm run build:verify --silent && node scripts/verify-agent.mjs",
+    "verify:llm": "npm run build:verify --silent && node scripts/verify-llm.mjs",
     "verify:reminders": "npm run build:verify --silent && node scripts/verify-reminders.mjs",
     "verify:mp": "node scripts/verify-mp.mjs",
     "verify:wecom": "node scripts/verify-wecom.mjs",

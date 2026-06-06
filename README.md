@@ -13,6 +13,7 @@ Cloudflare Workers + TypeScript implementation for two callback channels:
 npm install
 npm run typecheck
 npm run verify:agent
+npm run verify:llm
 npm run verify:reminders
 npm run verify:mp
 npm run verify:wecom
@@ -58,6 +59,21 @@ H5 reminders:
 ```powershell
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+```
+
+Kimi LLM:
+
+```powershell
+npx wrangler secret put LLM_API_KEY
+npx wrangler secret put LLM_BASE_URL
+npx wrangler secret put LLM_MODEL
+```
+
+Recommended Kimi values:
+
+```text
+LLM_BASE_URL=https://api.moonshot.cn/v1
+LLM_MODEL=kimi-k2.5
 ```
 
 ## Callback URLs
@@ -138,7 +154,7 @@ The first Agent Core version is channel-independent and rule-based. It accepts:
 It returns:
 
 ```ts
-{ reply: string, route: "web_summary" | "reminder" | "weather" | "search" | "chat" }
+{ reply: string, route: "web_summary" | "reminder" | "reminder_list" | "reminder_cancel" | "weather" | "search" | "chat" }
 ```
 
 Current routes:
@@ -148,4 +164,4 @@ Current routes:
 - reminder list/cancel messages return the current pending reminders and point users to the H5 controls.
 - weather messages route to future weather API.
 - search messages route to future web search.
-- everything else routes to placeholder chat.
+- everything else routes to the configured OpenAI-compatible LLM.

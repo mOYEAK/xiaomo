@@ -7,6 +7,8 @@ const now = new Date("2026-06-05T04:00:00.000Z");
 async function main() {
   verifyRoutes();
   verifyReminderParsing();
+  await verifyAgentChat();
+  await verifyReminderDoesNotCallLlm();
   await verifyAgentReminderCreation();
   await verifyAgentReminderList();
   await verifyAgentReminderCancel();
@@ -23,6 +25,54 @@ function verifyRoutes() {
   assert.equal(routeMessage("\u660e\u5929\u4e0a\u6d77\u5929\u6c14\u600e\u4e48\u6837"), "weather");
   assert.equal(routeMessage("\u5e2e\u6211\u67e5\u4e00\u4e0b\u6700\u65b0\u6d88\u606f"), "search");
   assert.equal(routeMessage("\u4f60\u597d"), "chat");
+}
+
+async function verifyAgentChat() {
+  const calls = [];
+  const output = await runAgent(
+    {
+      userId: "web-user",
+      text: "\u4f60\u597d",
+      channel: "web",
+    },
+    {
+      llmClient: {
+        async complete(messages) {
+          calls.push(messages);
+          return "\u4f60\u597d\uff0c\u6709\u4ec0\u4e48\u53ef\u4ee5\u5e2e\u4f60\uff1f";
+        },
+      },
+    },
+  );
+
+  assert.equal(output.route, "chat");
+  assert.equal(output.reply, "\u4f60\u597d\uff0c\u6709\u4ec0\u4e48\u53ef\u4ee5\u5e2e\u4f60\uff1f");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1].content, "\u4f60\u597d");
+}
+
+async function verifyReminderDoesNotCallLlm() {
+  let llmCalls = 0;
+  const output = await runAgent(
+    {
+      userId: "web-user",
+      text: "\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167",
+      channel: "web",
+    },
+    {
+      now,
+      llmClient: {
+        async complete() {
+          llmCalls += 1;
+          return "unexpected";
+        },
+      },
+      reminderStore: createMemoryReminderStore(),
+    },
+  );
+
+  assert.equal(output.route, "reminder");
+  assert.equal(llmCalls, 0);
 }
 
 function verifyReminderParsing() {
@@ -149,8 +199,17 @@ async function verifyReminderFailure() {
 
 function createMemoryReminderStore() {
   return {
-    async createReminder() {
-      throw new Error("Not used.");
+    async createReminder(userId, reminder) {
+      return {
+        id: "reminder-1",
+        user_id: userId,
+        content: reminder.content,
+        source_message: reminder.sourceMessage,
+        target_time: reminder.targetTime,
+        timezone: reminder.timezone,
+        status: "pending",
+        retry_count: 0,
+      };
     },
     async listReminders() {
       return [
