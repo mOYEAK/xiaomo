@@ -10,6 +10,8 @@ async function main() {
   verifyJinaUrlConstruction();
   await verifyReadAndTruncate();
   await verifyDirectFallback();
+  await verifyAccessRestriction();
+  await verifyKnownPrivateUrl();
   await verifyEmptyContent();
   await verifyTimeout();
 
@@ -78,6 +80,38 @@ async function verifyDirectFallback() {
   ]);
   assert.equal(document.content, "Hello World");
   assert.equal(document.truncated, false);
+}
+
+async function verifyAccessRestriction() {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("\u53d7\u533a\u57df\u9650\u5236\uff0c\u8bf7\u5148\u767b\u5f55\u518d\u4f7f\u7528\u3002", {
+      status: 200,
+    });
+  };
+
+  const reader = createJinaWebReader();
+  await assert.rejects(
+    () => reader.read("https://example.com/private"),
+    (error) => error.code === "access_restricted",
+  );
+  assert.equal(calls, 1);
+}
+
+async function verifyKnownPrivateUrl() {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("unexpected", { status: 200 });
+  };
+
+  const reader = createJinaWebReader();
+  await assert.rejects(
+    () => reader.read("https://www.doubao.com/chat/123?channel=test"),
+    (error) => error.code === "access_restricted",
+  );
+  assert.equal(calls, 0);
 }
 
 async function verifyEmptyContent() {

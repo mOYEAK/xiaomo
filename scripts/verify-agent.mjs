@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { routeMessage, runAgent } from "../dist/verify/agentCore.js";
 import { parseReminderRequest } from "../dist/verify/reminderParser.js";
+import { WebReaderError } from "../dist/verify/webReader.js";
 
 const now = new Date("2026-06-05T04:00:00.000Z");
 
@@ -8,6 +9,7 @@ async function main() {
   verifyRoutes();
   verifyReminderParsing();
   await verifyWebSummary();
+  await verifyWebSummaryAccessRestriction();
   await verifyWebSummaryFailure();
   await verifyAgentChat();
   await verifyReminderDoesNotCallLlm();
@@ -61,6 +63,32 @@ async function verifyWebSummary() {
   assert.match(output.reply, /https:\/\/example\.com\/article/);
   assert.equal(llmCalls.length, 1);
   assert.match(llmCalls[0][1].content, /\u8fd9\u662f\u7f51\u9875\u6b63\u6587/);
+}
+
+async function verifyWebSummaryAccessRestriction() {
+  const output = await runAgent(
+    {
+      userId: "web-user",
+      text: "https://example.com/private",
+      channel: "web",
+    },
+    {
+      llmClient: {
+        async complete() {
+          return "unexpected";
+        },
+      },
+      webReader: {
+        async read() {
+          throw new WebReaderError("login required", "access_restricted");
+        },
+      },
+    },
+  );
+
+  assert.equal(output.route, "web_summary");
+  assert.match(output.reply, /\u516c\u5f00\u5206\u4eab\u94fe\u63a5/);
+  assert.match(output.reply, /\u7c98\u8d34/);
 }
 
 async function verifyWebSummaryFailure() {

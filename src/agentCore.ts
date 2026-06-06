@@ -5,7 +5,7 @@ import {
 } from "./reminderParser";
 import type { LlmClient } from "./llmClient";
 import type { ReminderStore } from "./reminderStore";
-import { extractFirstUrl, type WebReader } from "./webReader";
+import { extractFirstUrl, WebReaderError, type WebReader } from "./webReader";
 
 export type AgentChannel = "web" | "mp" | "wecom";
 
@@ -284,6 +284,14 @@ async function handleWebSummaryRoute(input: AgentInput, runtime: AgentRuntime): 
       error: toSafeErrorMessage(error),
       url,
     });
+
+    if (error instanceof WebReaderError && error.code === "access_restricted") {
+      return {
+        route: "web_summary",
+        reply:
+          "\u8fd9\u4e2a\u94fe\u63a5\u9700\u8981\u767b\u5f55\u6216\u53d7\u533a\u57df\u9650\u5236\uff0c\u6211\u65e0\u6cd5\u8bfb\u53d6\u5176\u4e2d\u7684\u6b63\u6587\u3002\u8bf7\u53d1\u9001\u516c\u5f00\u5206\u4eab\u94fe\u63a5\uff0c\u6216\u76f4\u63a5\u7c98\u8d34\u9700\u8981\u603b\u7ed3\u7684\u5185\u5bb9\u3002",
+      };
+    }
 
     return {
       route: "web_summary",
