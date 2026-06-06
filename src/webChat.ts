@@ -11,6 +11,7 @@ import {
   type ReminderStatus,
   type SupabaseEnv,
 } from "./reminderStore";
+import { createJinaWebReader } from "./webReader";
 
 export interface ChatEnv extends SupabaseEnv, LlmEnv {}
 
@@ -57,6 +58,7 @@ export async function handleChatApi(request: Request, env: ChatEnv): Promise<Res
     {
       llmClient: hasLlmConfig(env) ? createOpenAiCompatibleLlmClient(env) : undefined,
       reminderStore: hasSupabaseConfig(env) ? createSupabaseReminderStore(env) : undefined,
+      webReader: createJinaWebReader(),
     },
   );
 

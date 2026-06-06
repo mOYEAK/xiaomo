@@ -7,6 +7,8 @@ const now = new Date("2026-06-05T04:00:00.000Z");
 async function main() {
   verifyRoutes();
   verifyReminderParsing();
+  await verifyWebSummary();
+  await verifyWebSummaryFailure();
   await verifyAgentChat();
   await verifyReminderDoesNotCallLlm();
   await verifyAgentReminderCreation();
@@ -25,6 +27,65 @@ function verifyRoutes() {
   assert.equal(routeMessage("\u660e\u5929\u4e0a\u6d77\u5929\u6c14\u600e\u4e48\u6837"), "weather");
   assert.equal(routeMessage("\u5e2e\u6211\u67e5\u4e00\u4e0b\u6700\u65b0\u6d88\u606f"), "search");
   assert.equal(routeMessage("\u4f60\u597d"), "chat");
+}
+
+async function verifyWebSummary() {
+  const llmCalls = [];
+  const output = await runAgent(
+    {
+      userId: "web-user",
+      text: "\u603b\u7ed3 https://example.com/article",
+      channel: "web",
+    },
+    {
+      llmClient: {
+        async complete(messages) {
+          llmCalls.push(messages);
+          return "\u6838\u5fc3\u8981\u70b9\n- \u8981\u70b9\u4e00\n\n\u7b80\u77ed\u7ed3\u8bba\n\u8fd9\u662f\u7ed3\u8bba\u3002";
+        },
+      },
+      webReader: {
+        async read(url) {
+          return {
+            url,
+            content: "\u8fd9\u662f\u7f51\u9875\u6b63\u6587\u3002",
+            truncated: false,
+          };
+        },
+      },
+    },
+  );
+
+  assert.equal(output.route, "web_summary");
+  assert.match(output.reply, /\u6838\u5fc3\u8981\u70b9/);
+  assert.match(output.reply, /https:\/\/example\.com\/article/);
+  assert.equal(llmCalls.length, 1);
+  assert.match(llmCalls[0][1].content, /\u8fd9\u662f\u7f51\u9875\u6b63\u6587/);
+}
+
+async function verifyWebSummaryFailure() {
+  const output = await runAgent(
+    {
+      userId: "web-user",
+      text: "https://example.com/private",
+      channel: "web",
+    },
+    {
+      llmClient: {
+        async complete() {
+          return "unexpected";
+        },
+      },
+      webReader: {
+        async read() {
+          throw new Error("blocked");
+        },
+      },
+    },
+  );
+
+  assert.equal(output.route, "web_summary");
+  assert.match(output.reply, /\u65e0\u6cd5\u8bfb\u53d6\u6216\u603b\u7ed3/);
 }
 
 async function verifyAgentChat() {

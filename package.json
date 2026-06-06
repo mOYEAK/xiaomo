@@ -11,6 +11,7 @@
     "verify:agent": "npm run build:verify --silent && node scripts/verify-agent.mjs",
     "verify:llm": "npm run build:verify --silent && node scripts/verify-llm.mjs",
     "verify:reminders": "npm run build:verify --silent && node scripts/verify-reminders.mjs",
+    "verify:web": "npm run build:verify --silent && node scripts/verify-web-reader.mjs",
     "verify:mp": "node scripts/verify-mp.mjs",
     "verify:wecom": "node scripts/verify-wecom.mjs",
     "typecheck": "tsc --noEmit"

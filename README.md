@@ -15,6 +15,7 @@ npm run typecheck
 npm run verify:agent
 npm run verify:llm
 npm run verify:reminders
+npm run verify:web
 npm run verify:mp
 npm run verify:wecom
 npm run dev
@@ -159,9 +160,17 @@ It returns:
 
 Current routes:
 
-- URL messages route to future web summarization.
+- URL messages are read through Jina Reader and summarized by the configured LLM.
 - reminder-like messages create Supabase reminders when H5 reminder storage is configured.
 - reminder list/cancel messages return the current pending reminders and point users to the H5 controls.
 - weather messages route to future weather API.
 - search messages route to future web search.
 - everything else routes to the configured OpenAI-compatible LLM.
+
+Web summary example:
+
+```text
+https://example.com/article
+```
+
+The first URL in a message is summarized into 3-5 key points, a short conclusion, and the original link.

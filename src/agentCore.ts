@@ -5,6 +5,7 @@ import {
 } from "./reminderParser";
 import type { LlmClient } from "./llmClient";
 import type { ReminderStore } from "./reminderStore";
+import { extractFirstUrl, type WebReader } from "./webReader";
 
 export type AgentChannel = "web" | "mp" | "wecom";
 
@@ -22,6 +23,7 @@ export interface AgentOutput {
 export interface AgentRuntime {
   llmClient?: LlmClient;
   reminderStore?: ReminderStore;
+  webReader?: WebReader;
   now?: Date;
 }
 
@@ -71,6 +73,10 @@ export async function runAgent(input: AgentInput, runtime: AgentRuntime = {}): P
 
   if (route === "chat") {
     return handleChatRoute(input, runtime);
+  }
+
+  if (route === "web_summary") {
+    return handleWebSummaryRoute(input, runtime);
   }
 
   return {
@@ -230,6 +236,59 @@ async function handleChatRoute(input: AgentInput, runtime: AgentRuntime): Promis
       route: "chat",
       reply:
         "\u6211\u6682\u65f6\u65e0\u6cd5\u5b8c\u6210\u8fd9\u6b21 AI \u5bf9\u8bdd\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002",
+    };
+  }
+}
+
+async function handleWebSummaryRoute(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput> {
+  const url = extractFirstUrl(input.text);
+
+  if (!url) {
+    return {
+      route: "web_summary",
+      reply: "\u6211\u6ca1\u6709\u627e\u5230\u53ef\u8bfb\u53d6\u7684\u7f51\u9875\u94fe\u63a5\uff0c\u8bf7\u53d1\u9001\u5b8c\u6574\u7684 http:// \u6216 https:// \u94fe\u63a5\u3002",
+    };
+  }
+
+  if (!runtime.webReader || !runtime.llmClient) {
+    return {
+      route: "web_summary",
+      reply:
+        "\u7f51\u9875\u603b\u7ed3\u80fd\u529b\u8fd8\u6ca1\u6709\u5b8c\u6210\u914d\u7f6e\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002",
+    };
+  }
+
+  try {
+    const document = await runtime.webReader.read(url);
+    const truncationNote = document.truncated
+      ? "\n\n\u6ce8\u610f\uff1a\u6b63\u6587\u8f83\u957f\uff0c\u4ee5\u4e0b\u5185\u5bb9\u662f\u622a\u65ad\u540e\u7684\u524d\u534a\u90e8\u5206\u3002"
+      : "";
+    const summary = await runtime.llmClient.complete([
+      {
+        role: "system",
+        content:
+          "\u4f60\u662f\u4e00\u4e2a\u4e2d\u6587\u7f51\u9875\u4fe1\u606f\u6574\u7406\u52a9\u7406\u3002\u53ea\u6839\u636e\u63d0\u4f9b\u7684\u6b63\u6587\u603b\u7ed3\uff0c\u4e0d\u8981\u7f16\u9020\u3002\u8f93\u51fa\u683c\u5f0f\u56fa\u5b9a\u4e3a\uff1a\u201c\u6838\u5fc3\u8981\u70b9\u201d\u4e0b\u5217\u51fa 3-5 \u4e2a\u7b80\u6d01\u8981\u70b9\uff0c\u7136\u540e\u8f93\u51fa\u201c\u7b80\u77ed\u7ed3\u8bba\u201d\u4e00\u6bb5\u3002",
+      },
+      {
+        role: "user",
+        content: `\u8bf7\u603b\u7ed3\u4ee5\u4e0b\u7f51\u9875\u6b63\u6587\uff1a\n\n${document.content}${truncationNote}`,
+      },
+    ]);
+
+    return {
+      route: "web_summary",
+      reply: `${summary}\n\n\u539f\u6587\u94fe\u63a5\uff1a${document.url}`,
+    };
+  } catch (error) {
+    console.error("Web summary failed.", {
+      error: toSafeErrorMessage(error),
+      url,
+    });
+
+    return {
+      route: "web_summary",
+      reply:
+        "\u6211\u6682\u65f6\u65e0\u6cd5\u8bfb\u53d6\u6216\u603b\u7ed3\u8fd9\u4e2a\u7f51\u9875\u3002\u5b83\u53ef\u80fd\u9700\u8981\u767b\u5f55\u3001\u6709\u8bbf\u95ee\u9650\u5236\uff0c\u6216\u7f51\u9875\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\u3002",
     };
   }
 }
