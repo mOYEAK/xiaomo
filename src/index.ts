@@ -15,7 +15,7 @@ import {
   handleDeleteMemoApi,
 } from "./webChat";
 
-export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv, SearchEnv {}
+export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv, SearchEnv, AuthEnv {}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -33,6 +33,20 @@ export default {
 
     if (url.pathname === "/wecom") {
       return handleWecomRequest(request, env, ctx);
+    }
+
+    if (url.pathname === "/login") {
+      return handleLoginRequest(request, env);
+    }
+
+    if (url.pathname === "/logout") {
+      return handleLogoutRequest(request);
+    }
+
+    if ((url.pathname === "/chat" || url.pathname.startsWith("/api/")) && hasAuthConfig(env)) {
+      if (!(await isAuthenticated(request, env))) {
+        return unauthorizedResponse(request);
+      }
     }
 
     if (url.pathname === "/chat") {
@@ -80,3 +94,11 @@ export default {
     return new Response("Not Found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+import {
+  handleLoginRequest,
+  handleLogoutRequest,
+  hasAuthConfig,
+  isAuthenticated,
+  unauthorizedResponse,
+  type AuthEnv,
+} from "./auth";

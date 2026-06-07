@@ -265,6 +265,16 @@ function buildChatHtml(): string {
       line-height: 1.4;
       text-align: right;
     }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logout-link {
+      color: #64707d;
+      font-size: 13px;
+      text-decoration: none;
+    }
     #workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 320px;
@@ -466,7 +476,10 @@ function buildChatHtml(): string {
   <main>
     <header>
       <h1>Personal Agent</h1>
-      <div id="status">网页提醒已开启</div>
+      <div class="header-actions">
+        <div id="status">网页提醒已开启</div>
+        <a class="logout-link" href="/logout">退出</a>
+      </div>
     </header>
     <section id="workspace">
       <section id="messages" aria-live="polite">

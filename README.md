@@ -13,6 +13,7 @@ Cloudflare Workers + TypeScript implementation for two callback channels:
 npm install
 npm run typecheck
 npm run verify:agent
+npm run verify:auth
 npm run verify:llm
 npm run verify:memos
 npm run verify:reminders
@@ -85,6 +86,16 @@ Tavily web search:
 ```powershell
 npx wrangler secret put TAVILY_API_KEY
 ```
+
+H5 personal access password:
+
+```powershell
+npx wrangler secret put H5_ACCESS_PASSWORD
+npx wrangler secret put H5_SESSION_SECRET
+```
+
+When configured, `/chat` redirects unauthenticated visitors to `/login`, and `/api/*` returns HTTP 401.
+`/`, `/mp`, and `/wecom` remain public.
 
 ## Callback URLs
 
