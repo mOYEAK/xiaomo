@@ -1,6 +1,7 @@
 import { handleMpRequest } from "./mpHandler";
 import type { LlmEnv } from "./llmClient";
 import type { SupabaseEnv } from "./reminderStore";
+import type { SearchEnv } from "./searchClient";
 import type { OfficialAccountEnv } from "./wechatOfficial";
 import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
 import {
@@ -10,9 +11,11 @@ import {
   handleDueRemindersApi,
   handleRemindersApi,
   handleMarkReminderSentApi,
+  handleMemosApi,
+  handleDeleteMemoApi,
 } from "./webChat";
 
-export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv {}
+export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv, SearchEnv {}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -46,6 +49,16 @@ export default {
 
     if (url.pathname === "/api/reminders") {
       return handleRemindersApi(request, env);
+    }
+
+    if (url.pathname === "/api/memos") {
+      return handleMemosApi(request, env);
+    }
+
+    const deleteMemoMatch = url.pathname.match(/^\/api\/memos\/([^/]+)\/delete$/);
+
+    if (deleteMemoMatch) {
+      return handleDeleteMemoApi(request, env, decodeURIComponent(deleteMemoMatch[1]));
     }
 
     const cancelReminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/cancel$/);

@@ -4,6 +4,7 @@ import {
   hasLlmConfig,
   type LlmEnv,
 } from "./llmClient";
+import { createSupabaseMemoStore, type MemoRecord } from "./memoStore";
 import {
   createSupabaseReminderStore,
   hasSupabaseConfig,
@@ -11,9 +12,16 @@ import {
   type ReminderStatus,
   type SupabaseEnv,
 } from "./reminderStore";
+import {
+  createTavilySearchClient,
+  hasSearchConfig,
+  type SearchEnv,
+} from "./searchClient";
+import { createSupabaseUserPreferenceStore } from "./userPreferenceStore";
 import { createJinaWebReader } from "./webReader";
+import { createOpenMeteoWeatherClient } from "./weatherClient";
 
-export interface ChatEnv extends SupabaseEnv, LlmEnv {}
+export interface ChatEnv extends SupabaseEnv, LlmEnv, SearchEnv {}
 
 interface ChatRequestBody {
   userId?: unknown;
@@ -57,12 +65,44 @@ export async function handleChatApi(request: Request, env: ChatEnv): Promise<Res
     },
     {
       llmClient: hasLlmConfig(env) ? createOpenAiCompatibleLlmClient(env) : undefined,
+      memoStore: hasSupabaseConfig(env) ? createSupabaseMemoStore(env) : undefined,
       reminderStore: hasSupabaseConfig(env) ? createSupabaseReminderStore(env) : undefined,
+      searchClient: hasSearchConfig(env) ? createTavilySearchClient(env) : undefined,
+      userPreferenceStore: hasSupabaseConfig(env)
+        ? createSupabaseUserPreferenceStore(env)
+        : undefined,
       webReader: createJinaWebReader(),
+      weatherClient: createOpenMeteoWeatherClient(),
     },
   );
 
   return jsonResponse(result);
+}
+
+export async function handleMemosApi(request: Request, env: SupabaseEnv): Promise<Response> {
+  if (request.method !== "GET") return jsonResponse({ error: "Method Not Allowed" }, 405);
+  if (!hasSupabaseConfig(env)) return jsonResponse({ memos: [], storageConfigured: false });
+
+  try {
+    const userId = readUserId(new URL(request.url).searchParams.get("userId"));
+    const memos = await createSupabaseMemoStore(env).listMemos(userId);
+    return jsonResponse({ memos: memos.map(toMemoApiRecord), storageConfigured: true });
+  } catch {
+    return jsonResponse({ memos: [], storageConfigured: false });
+  }
+}
+
+export async function handleDeleteMemoApi(
+  request: Request,
+  env: SupabaseEnv,
+  memoId: string,
+): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ error: "Method Not Allowed" }, 405);
+  if (!hasSupabaseConfig(env)) return jsonResponse({ error: "Supabase is not configured." }, 503);
+
+  const userId = readUserId(new URL(request.url).searchParams.get("userId"));
+  await createSupabaseMemoStore(env).deleteMemo(userId, memoId);
+  return jsonResponse({ ok: true });
 }
 
 export async function handleDueRemindersApi(request: Request, env: SupabaseEnv): Promise<Response> {
@@ -164,6 +204,10 @@ function toReminderApiRecord(reminder: ReminderRecord): Pick<
     timezone: reminder.timezone,
     status: reminder.status,
   };
+}
+
+function toMemoApiRecord(memo: MemoRecord): Pick<MemoRecord, "id" | "content" | "created_at"> {
+  return { id: memo.id, content: memo.content, created_at: memo.created_at };
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -284,6 +328,16 @@ function buildChatHtml(): string {
       font-weight: 600;
     }
     #reminder-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #memo-panel {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid #e1e5ea;
+    }
+    #memo-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -426,6 +480,15 @@ function buildChatHtml(): string {
         <div id="reminder-list">
           <div class="empty">正在加载提醒...</div>
         </div>
+        <section id="memo-panel" aria-label="备忘录列表">
+          <div class="panel-head">
+            <h2>备忘录</h2>
+            <button class="text-button" id="refresh-memos" type="button">刷新</button>
+          </div>
+          <div id="memo-list">
+            <div class="empty">正在加载备忘录...</div>
+          </div>
+        </section>
       </aside>
     </section>
     <form id="chat-form">
@@ -451,6 +514,8 @@ function buildChatHtml(): string {
     const status = document.getElementById("status");
     const reminderList = document.getElementById("reminder-list");
     const refreshReminders = document.getElementById("refresh-reminders");
+    const memoList = document.getElementById("memo-list");
+    const refreshMemos = document.getElementById("refresh-memos");
     const dueBanner = document.getElementById("due-banner");
     const dueContent = document.getElementById("due-content");
     const ackDue = document.getElementById("ack-due");
@@ -556,6 +621,66 @@ function buildChatHtml(): string {
       }
     }
 
+    async function loadMemoList() {
+      try {
+        const response = await fetch("/api/memos?userId=" + encodeURIComponent(userId));
+        const data = await response.json();
+
+        if (!data.storageConfigured) {
+          memoList.innerHTML = '<div class="empty">备忘录存储未配置。</div>';
+          return;
+        }
+
+        renderMemoList(data.memos || []);
+      } catch {
+        memoList.innerHTML = '<div class="empty">备忘录列表加载失败。</div>';
+      }
+    }
+
+    function renderMemoList(memos) {
+      memoList.textContent = "";
+
+      if (!memos.length) {
+        memoList.innerHTML = '<div class="empty">暂无备忘录。</div>';
+        return;
+      }
+
+      for (const memo of memos) {
+        const card = document.createElement("article");
+        card.className = "reminder-card";
+
+        const contentNode = document.createElement("div");
+        contentNode.className = "reminder-content";
+        contentNode.textContent = memo.content;
+
+        const actions = document.createElement("div");
+        actions.className = "reminder-actions";
+
+        const remove = document.createElement("button");
+        remove.className = "cancel-button";
+        remove.type = "button";
+        remove.textContent = "删除";
+        remove.addEventListener("click", () => deleteMemo(memo.id));
+
+        actions.appendChild(remove);
+        card.appendChild(contentNode);
+        card.appendChild(actions);
+        memoList.appendChild(card);
+      }
+    }
+
+    async function deleteMemo(id) {
+      try {
+        await fetch("/api/memos/" + encodeURIComponent(id) + "/delete?userId=" + encodeURIComponent(userId), {
+          method: "POST",
+        });
+        addMessage("agent", "已删除这条备忘。");
+        await loadMemoList();
+      } catch {
+        addMessage("agent", "删除备忘失败，请稍后再试。");
+      }
+    }
+
     async function pollDueReminders() {
       try {
         const response = await fetch("/api/reminders/due?userId=" + encodeURIComponent(userId));
@@ -626,6 +751,7 @@ function buildChatHtml(): string {
     });
 
     refreshReminders.addEventListener("click", loadReminderList);
+    refreshMemos.addEventListener("click", loadMemoList);
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -650,6 +776,7 @@ function buildChatHtml(): string {
         } else {
           addMessage("agent", data.reply);
           loadReminderList();
+          loadMemoList();
           pollDueReminders();
         }
       } catch {
@@ -662,6 +789,7 @@ function buildChatHtml(): string {
     });
 
     loadReminderList();
+    loadMemoList();
     pollDueReminders();
     setInterval(pollDueReminders, 15000);
   </script>

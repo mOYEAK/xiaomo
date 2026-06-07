@@ -14,7 +14,10 @@ npm install
 npm run typecheck
 npm run verify:agent
 npm run verify:llm
+npm run verify:memos
 npm run verify:reminders
+npm run verify:weather
+npm run verify:search
 npm run verify:web
 npm run verify:mp
 npm run verify:wecom
@@ -77,6 +80,12 @@ LLM_BASE_URL=https://api.moonshot.cn/v1
 LLM_MODEL=kimi-k2.5
 ```
 
+Tavily web search:
+
+```powershell
+npx wrangler secret put TAVILY_API_KEY
+```
+
 ## Callback URLs
 
 Use separate paths for separate channels:
@@ -99,6 +108,12 @@ POST https://personal-agent.ye344136941.workers.dev/api/reminders/{id}/mark-sent
 
 Cancel reminder:
 POST https://personal-agent.ye344136941.workers.dev/api/reminders/{id}/cancel
+
+Memo list API:
+GET https://personal-agent.ye344136941.workers.dev/api/memos?userId=web-user
+
+Delete memo:
+POST https://personal-agent.ye344136941.workers.dev/api/memos/{id}/delete?userId=web-user
 
 WeChat Official Account URL:
 https://personal-agent.ye344136941.workers.dev/mp
@@ -144,6 +159,31 @@ create index if not exists reminders_due_idx
   on public.reminders (user_id, status, target_time);
 ```
 
+Weather queries remember the most recently used city for each user. Create the preferences table:
+
+```sql
+create table if not exists public.user_preferences (
+  user_id text primary key,
+  weather_location_name text,
+  weather_latitude double precision,
+  weather_longitude double precision,
+  weather_timezone text default 'Asia/Shanghai',
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.memos (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  content text not null,
+  source_message text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists memos_user_created_idx
+  on public.memos (user_id, created_at desc);
+```
+
 ## Agent Core
 
 The first Agent Core version is channel-independent and rule-based. It accepts:
@@ -155,7 +195,7 @@ The first Agent Core version is channel-independent and rule-based. It accepts:
 It returns:
 
 ```ts
-{ reply: string, route: "web_summary" | "reminder" | "reminder_list" | "reminder_cancel" | "weather" | "search" | "chat" }
+{ reply: string, route: "web_summary" | "reminder" | "reminder_list" | "reminder_cancel" | "memo_create" | "memo_list" | "memo_search" | "memo_delete" | "weather" | "search" | "chat" }
 ```
 
 Current routes:
@@ -163,8 +203,9 @@ Current routes:
 - URL messages are read through Jina Reader and summarized by the configured LLM.
 - reminder-like messages create Supabase reminders when H5 reminder storage is configured.
 - reminder list/cancel messages return the current pending reminders and point users to the H5 controls.
-- weather messages route to future weather API.
-- search messages route to future web search.
+- memo messages create, search, list, and delete Supabase memos.
+- weather messages query Open-Meteo. A city stated by the user becomes their remembered city.
+- search messages query Tavily Top 3 and use the configured LLM to synthesize an answer with sources.
 - everything else routes to the configured OpenAI-compatible LLM.
 
 Web summary example:
@@ -174,3 +215,29 @@ https://example.com/article
 ```
 
 The first URL in a message is summarized into 3-5 key points, a short conclusion, and the original link.
+
+Weather examples:
+
+```text
+明天上海天气怎么样
+今天天气怎么样
+周末北京会下雨吗
+```
+
+The first query with an explicit city saves that city in Supabase. Later queries may omit the city.
+
+Search examples:
+
+```text
+搜索 TypeScript 6 新功能
+帮我查一下最新人工智能新闻
+```
+
+Memo examples:
+
+```text
+记一下：护照放在书桌抽屉
+我之前把护照放哪了
+查看备忘录
+删除备忘录
+```

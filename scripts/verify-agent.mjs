@@ -26,8 +26,14 @@ function verifyRoutes() {
   assert.equal(routeMessage("\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167"), "reminder");
   assert.equal(routeMessage("\u67e5\u770b\u63d0\u9192"), "reminder_list");
   assert.equal(routeMessage("\u53d6\u6d88\u63d0\u9192"), "reminder_cancel");
+  assert.equal(routeMessage("记一下：护照放在书桌抽屉"), "memo_create");
+  assert.equal(routeMessage("我之前把护照放哪了"), "memo_search");
+  assert.equal(routeMessage("查看备忘录"), "memo_list");
+  assert.equal(routeMessage("删除备忘录"), "memo_delete");
   assert.equal(routeMessage("\u660e\u5929\u4e0a\u6d77\u5929\u6c14\u600e\u4e48\u6837"), "weather");
   assert.equal(routeMessage("\u5e2e\u6211\u67e5\u4e00\u4e0b\u6700\u65b0\u6d88\u606f"), "search");
+  assert.equal(routeMessage("\u6700\u8fd1\u4eba\u5de5\u667a\u80fd\u65b0\u95fb"), "search");
+  assert.equal(routeMessage("\u6211\u6700\u8fd1\u5f88\u7d2f"), "chat");
   assert.equal(routeMessage("\u4f60\u597d"), "chat");
 }
 
