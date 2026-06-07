@@ -51,7 +51,7 @@ const weekdayDigits: Record<string, number> = {
   "\u5929": 0,
 };
 
-const triggerPattern = /(\u63d0\u9192\u6211|\u63d0\u9192|\u8bb0\u5f97|\u5230\u65f6\u5019)/g;
+const triggerPattern = /(\u63d0\u9192\u6211|\u63d0\u9192|\u8bb0\u5f97|\u5230\u65f6\u5019)/;
 const datePattern =
   /(\u4eca\u5929|\u660e\u5929|\u540e\u5929|\u4eca\u665a|\u660e\u65e9|\u660e\u665a|\u4e0b\u5468[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/g;
 const dateTestPattern =
@@ -60,9 +60,31 @@ const periodPattern = /(\u51cc\u6668|\u65e9\u4e0a|\u4e0a\u5348|\u4e2d\u5348|\u4e
 const colonTimePattern = /([0-9]{1,2})\s*[:\uff1a]\s*([0-9]{1,2})/;
 const pointTimePattern =
   /([0-9]{1,2}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,3})\s*(?:\u70b9|\u65f6)(?:\s*(\u534a|([0-9]{1,2}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,3})\s*\u5206?))?/;
+const relativeTimePattern =
+  /([0-9]{1,4}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,4})\s*(\u5206\u949f|\u5c0f\u65f6)\s*\u540e/;
 
 export function parseReminderRequest(text: string, now = new Date()): ReminderParseResult {
   const sourceMessage = text.trim();
+  const relativeTime = parseRelativeTime(sourceMessage, now);
+
+  if (relativeTime) {
+    const content = extractReminderContent(sourceMessage);
+
+    if (!content) {
+      return { ok: false, reason: "missing_content" };
+    }
+
+    return {
+      ok: true,
+      reminder: {
+        content,
+        sourceMessage,
+        targetTime: relativeTime.toISOString(),
+        timezone: DEFAULT_TIMEZONE,
+      },
+    };
+  }
+
   const time = parseTime(sourceMessage);
 
   if (!time) {
@@ -100,6 +122,23 @@ export function parseReminderRequest(text: string, now = new Date()): ReminderPa
       timezone: DEFAULT_TIMEZONE,
     },
   };
+}
+
+function parseRelativeTime(text: string, now: Date): Date | undefined {
+  const match = text.match(relativeTimePattern);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const amount = parseNumberToken(match[1]);
+
+  if (!amount || amount < 1) {
+    return undefined;
+  }
+
+  const durationMs = match[2] === "\u5c0f\u65f6" ? amount * 60 * minuteMs : amount * minuteMs;
+  return new Date(now.getTime() + durationMs);
 }
 
 export function formatReminderTime(isoTime: string): string {
@@ -211,6 +250,7 @@ function extractReminderContent(text: string): string {
   return text
     .replace(colonTimePattern, "")
     .replace(pointTimePattern, "")
+    .replace(relativeTimePattern, "")
     .replace(triggerPattern, "")
     .replace(datePattern, "")
     .replace(periodPattern, "")

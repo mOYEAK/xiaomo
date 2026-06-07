@@ -197,6 +197,16 @@ function verifyReminderParsing() {
 
   const missingTime = parseReminderRequest("\u63d0\u9192\u6211\u5e26\u4f1e", now);
   assert.deepEqual(missingTime, { ok: false, reason: "missing_time" });
+
+  const fiveMinutes = parseReminderRequest("5 分钟后提醒我测试提醒", now);
+  assert.equal(fiveMinutes.ok, true);
+  assert.equal(fiveMinutes.reminder.content, "测试提醒");
+  assert.equal(fiveMinutes.reminder.targetTime, "2026-06-05T04:05:00.000Z");
+
+  const twoHours = parseReminderRequest("两小时后提醒我出发", now);
+  assert.equal(twoHours.ok, true);
+  assert.equal(twoHours.reminder.content, "出发");
+  assert.equal(twoHours.reminder.targetTime, "2026-06-05T06:00:00.000Z");
 }
 
 async function verifyAgentReminderCreation() {
