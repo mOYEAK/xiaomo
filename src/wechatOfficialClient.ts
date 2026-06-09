@@ -12,6 +12,9 @@ interface CustomMessageResponse {
   errmsg?: string;
 }
 
+const maxCustomTextBytes = 2048;
+const truncationSuffix = "\n\n[内容过长，已截断]";
+
 export async function sendOfficialAccountCustomTextMessage(
   env: OfficialAccountEnv,
   toUser: string,
@@ -34,7 +37,7 @@ export async function sendOfficialAccountCustomTextMessage(
       touser: toUser,
       msgtype: "text",
       text: {
-        content,
+        content: truncateOfficialAccountText(content),
       },
     }),
   });
@@ -43,6 +46,31 @@ export async function sendOfficialAccountCustomTextMessage(
   if (!response.ok || payload.errcode !== 0) {
     throw new Error(`Failed to send WeChat Official Account custom message: ${payload.errmsg ?? response.statusText}`);
   }
+}
+
+export function truncateOfficialAccountText(content: string): string {
+  const encoder = new TextEncoder();
+
+  if (encoder.encode(content).length <= maxCustomTextBytes) {
+    return content;
+  }
+
+  const suffixBytes = encoder.encode(truncationSuffix).length;
+  let result = "";
+  let byteLength = 0;
+
+  for (const character of content) {
+    const characterBytes = encoder.encode(character).length;
+
+    if (byteLength + characterBytes + suffixBytes > maxCustomTextBytes) {
+      break;
+    }
+
+    result += character;
+    byteLength += characterBytes;
+  }
+
+  return `${result}${truncationSuffix}`;
 }
 
 async function getOfficialAccountAccessToken(appId: string, appSecret: string): Promise<string> {

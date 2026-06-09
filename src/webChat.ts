@@ -1,9 +1,5 @@
 import { runAgent } from "./agentCore";
-import {
-  createOpenAiCompatibleLlmClient,
-  hasLlmConfig,
-  type LlmEnv,
-} from "./llmClient";
+import { createAgentRuntime, type AgentRuntimeEnv } from "./agentRuntime";
 import { createSupabaseMemoStore, type MemoRecord } from "./memoStore";
 import {
   createSupabaseReminderStore,
@@ -12,16 +8,8 @@ import {
   type ReminderStatus,
   type SupabaseEnv,
 } from "./reminderStore";
-import {
-  createTavilySearchClient,
-  hasSearchConfig,
-  type SearchEnv,
-} from "./searchClient";
-import { createSupabaseUserPreferenceStore } from "./userPreferenceStore";
-import { createJinaWebReader } from "./webReader";
-import { createOpenMeteoWeatherClient } from "./weatherClient";
 
-export interface ChatEnv extends SupabaseEnv, LlmEnv, SearchEnv {}
+export interface ChatEnv extends AgentRuntimeEnv {}
 
 interface ChatRequestBody {
   userId?: unknown;
@@ -63,17 +51,7 @@ export async function handleChatApi(request: Request, env: ChatEnv): Promise<Res
       text,
       channel: "web",
     },
-    {
-      llmClient: hasLlmConfig(env) ? createOpenAiCompatibleLlmClient(env) : undefined,
-      memoStore: hasSupabaseConfig(env) ? createSupabaseMemoStore(env) : undefined,
-      reminderStore: hasSupabaseConfig(env) ? createSupabaseReminderStore(env) : undefined,
-      searchClient: hasSearchConfig(env) ? createTavilySearchClient(env) : undefined,
-      userPreferenceStore: hasSupabaseConfig(env)
-        ? createSupabaseUserPreferenceStore(env)
-        : undefined,
-      webReader: createJinaWebReader(),
-      weatherClient: createOpenMeteoWeatherClient(),
-    },
+    createAgentRuntime(env),
   );
 
   return jsonResponse(result);

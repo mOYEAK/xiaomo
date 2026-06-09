@@ -1,8 +1,5 @@
-import { handleMpRequest } from "./mpHandler";
-import type { LlmEnv } from "./llmClient";
-import type { SupabaseEnv } from "./reminderStore";
-import type { SearchEnv } from "./searchClient";
-import type { OfficialAccountEnv } from "./wechatOfficial";
+import type { AgentRuntimeEnv } from "./agentRuntime";
+import { handleMpRequest, type MpEnv } from "./mpHandler";
 import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
 import {
   handleChatApi,
@@ -15,7 +12,7 @@ import {
   handleDeleteMemoApi,
 } from "./webChat";
 
-export interface Env extends OfficialAccountEnv, WecomEnv, SupabaseEnv, LlmEnv, SearchEnv, AuthEnv {}
+export interface Env extends MpEnv, WecomEnv, AgentRuntimeEnv, AuthEnv {}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

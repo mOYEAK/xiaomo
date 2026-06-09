@@ -1,6 +1,7 @@
+import { runAgent, type AgentInput, type AgentOutput, type AgentRuntime } from "./agentCore";
+import { createAgentRuntime, type AgentRuntimeEnv } from "./agentRuntime";
 import {
   buildEmptyReply,
-  buildTextReplyXml,
   decryptOfficialAccountMessage,
   parseEncryptedXml,
   parseOfficialAccountTextMessage,
@@ -11,20 +12,32 @@ import {
 } from "./wechatOfficial";
 import { sendOfficialAccountCustomTextMessage } from "./wechatOfficialClient";
 
-const TEST_REPLY_PREFIX = "\u6536\u5230\u6d4b\u8bd5\u6d88\u606f\uff1a";
-const CUSTOM_REPLY_PREFIX = "\u4e3b\u52a8\u5ba2\u670d\u6d88\u606f\u6d4b\u8bd5\uff1a";
+export interface MpEnv extends OfficialAccountEnv, AgentRuntimeEnv {}
+
+export interface MpHandlerDependencies {
+  createRuntime(env: AgentRuntimeEnv): AgentRuntime;
+  runAgent(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput>;
+  sendCustomTextMessage(env: OfficialAccountEnv, toUser: string, content: string): Promise<void>;
+}
+
+const defaultDependencies: MpHandlerDependencies = {
+  createRuntime: createAgentRuntime,
+  runAgent,
+  sendCustomTextMessage: sendOfficialAccountCustomTextMessage,
+};
 
 export async function handleMpRequest(
   request: Request,
-  env: OfficialAccountEnv,
+  env: MpEnv,
   ctx: ExecutionContext,
+  dependencies: MpHandlerDependencies = defaultDependencies,
 ): Promise<Response> {
   if (request.method === "GET") {
     return handleGetVerify(request, env);
   }
 
   if (request.method === "POST") {
-    return handlePostMessage(request, env, ctx);
+    return handlePostMessage(request, env, ctx, dependencies);
   }
 
   return new Response("Method Not Allowed", { status: 405 });
@@ -60,8 +73,9 @@ async function handleGetVerify(request: Request, env: OfficialAccountEnv): Promi
 
 async function handlePostMessage(
   request: Request,
-  env: OfficialAccountEnv,
+  env: MpEnv,
   ctx: ExecutionContext,
+  dependencies: MpHandlerDependencies,
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
@@ -80,19 +94,13 @@ async function handlePostMessage(
       return buildEmptyReply();
     }
 
-    const replyXml = buildTextReplyXml(message, `${TEST_REPLY_PREFIX}${message.content}`);
     console.info("Received WeChat Official Account text message.", {
       fromUser: message.fromUserName,
       contentLength: message.content.length,
     });
-    ctx.waitUntil(sendCustomReply(env, message));
+    ctx.waitUntil(runAgentAndSendReply(env, message, dependencies));
 
-    return new Response(replyXml, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-      },
-    });
+    return buildEmptyReply();
   } catch (error) {
     console.warn("Failed to process WeChat Official Account POST message.", {
       error: toSafeErrorMessage(error),
@@ -102,23 +110,50 @@ async function handlePostMessage(
   }
 }
 
-async function sendCustomReply(
-  env: OfficialAccountEnv,
+async function runAgentAndSendReply(
+  env: MpEnv,
   message: OfficialAccountTextMessage,
+  dependencies: MpHandlerDependencies,
 ): Promise<void> {
+  let reply: string;
+  let route: string;
+
   try {
-    await sendOfficialAccountCustomTextMessage(
-      env,
-      message.fromUserName,
-      `${CUSTOM_REPLY_PREFIX}${message.content}`,
+    const result = await dependencies.runAgent(
+      {
+        userId: message.fromUserName,
+        text: message.content,
+        channel: "mp",
+      },
+      dependencies.createRuntime(env),
     );
-    console.info("Sent WeChat Official Account custom reply.", {
+    reply = result.reply;
+    route = result.route;
+    console.info("Completed WeChat Official Account Agent task.", {
       toUser: message.fromUserName,
-      contentLength: message.content.length,
+      route,
+      replyLength: reply.length,
     });
   } catch (error) {
-    console.warn("Failed to send WeChat Official Account custom reply.", {
+    console.error("Failed to run WeChat Official Account Agent task.", {
       toUser: message.fromUserName,
+      error: toSafeErrorMessage(error),
+    });
+    reply = "这次消息处理失败了，请稍后再试。";
+    route = "error";
+  }
+
+  try {
+    await dependencies.sendCustomTextMessage(env, message.fromUserName, reply);
+    console.info("Sent WeChat Official Account Agent reply.", {
+      toUser: message.fromUserName,
+      route,
+      contentLength: reply.length,
+    });
+  } catch (error) {
+    console.error("Failed to send WeChat Official Account Agent reply.", {
+      toUser: message.fromUserName,
+      route,
       error: toSafeErrorMessage(error),
     });
   }

@@ -1,45 +1,48 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { XMLParser } from "fast-xml-parser";
+import { handleMpRequest } from "../dist/verify/mpHandler.js";
+import {
+  buildTextReplyXml,
+  parseOfficialAccountTextMessage,
+} from "../dist/verify/wechatOfficial.js";
+import { truncateOfficialAccountText } from "../dist/verify/wechatOfficialClient.js";
 
-const xmlParser = new XMLParser({
-  ignoreAttributes: true,
-  parseTagValue: false,
-  trimValues: false,
-});
+const token = "mp-token";
+const sampleText = "你好";
 
-const sampleText = "\u4f60\u597d";
-const passiveReply = "\u6536\u5230\u6d4b\u8bd5\u6d88\u606f\uff1a\u4f60\u597d";
-
-function main() {
-  verifyUrlSignature();
+async function main() {
+  await verifyPublicUrlSignature();
   verifyTextMessageParsing();
   verifyTextReplyXml();
+  verifyLongCustomTextIsTruncated();
+  await verifyTextMessageRunsAgentAsynchronously();
+  await verifyUnsupportedMessageIsIgnored();
+  await verifyInvalidSignatureIsIgnored();
+  await verifyAgentFailureGetsFallbackReply();
+  await verifyCustomMessageFailureDoesNotRejectTask();
 
   console.log("WeChat Official Account local verification passed.");
 }
 
-function verifyUrlSignature() {
-  const token = "mp-token";
+async function verifyPublicUrlSignature() {
   const timestamp = "1710000000";
   const nonce = "mp-nonce";
+  const echostr = "public-mp-route";
   const signature = createSha1Signature(token, timestamp, nonce);
-  const expected = createHash("sha1").update([token, timestamp, nonce].sort().join("")).digest("hex");
+  const response = await handleMpRequest(
+    new Request(
+      `https://example.com/mp?signature=${signature}&timestamp=${timestamp}&nonce=${nonce}&echostr=${echostr}`,
+    ),
+    createEnv(),
+    createContext().ctx,
+  );
 
-  assert.equal(signature, expected);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), echostr);
 }
 
 function verifyTextMessageParsing() {
-  const message = parseTextMessageXml(`
-    <xml>
-      <ToUserName><![CDATA[gh_app]]></ToUserName>
-      <FromUserName><![CDATA[o_user]]></FromUserName>
-      <CreateTime>1710000000</CreateTime>
-      <MsgType><![CDATA[text]]></MsgType>
-      <Content><![CDATA[${sampleText}]]></Content>
-      <MsgId>1234567890</MsgId>
-    </xml>
-  `);
+  const message = parseOfficialAccountTextMessage(buildMessageXml("text", sampleText));
 
   assert.equal(message.toUserName, "gh_app");
   assert.equal(message.fromUserName, "o_user");
@@ -55,74 +58,193 @@ function verifyTextReplyXml() {
       msgType: "text",
       content: sampleText,
     },
-    passiveReply,
+    `收到测试消息：${sampleText}`,
   );
-  const root = parseXmlRoot(reply);
 
-  assert.equal(String(root.ToUserName), "o_user");
-  assert.equal(String(root.FromUserName), "gh_app");
-  assert.equal(String(root.MsgType), "text");
-  assert.equal(String(root.Content), passiveReply);
+  assert.match(reply, /<ToUserName><!\[CDATA\[o_user\]\]><\/ToUserName>/);
+  assert.match(reply, /收到测试消息：你好/);
+}
+
+function verifyLongCustomTextIsTruncated() {
+  const content = "搜索结果".repeat(1000);
+  const truncated = truncateOfficialAccountText(content);
+
+  assert.ok(new TextEncoder().encode(truncated).length <= 2048);
+  assert.match(truncated, /\[内容过长，已截断\]$/);
+}
+
+async function verifyTextMessageRunsAgentAsynchronously() {
+  let resolveAgent;
+  const agentPromise = new Promise((resolve) => {
+    resolveAgent = resolve;
+  });
+  const agentCalls = [];
+  const sent = [];
+  const context = createContext();
+  const response = await handleMpRequest(
+    createPostRequest("text", "明天上海天气怎么样"),
+    createEnv(),
+    context.ctx,
+    createDependencies({
+      async runAgent(input) {
+        agentCalls.push(input);
+        return agentPromise;
+      },
+      async sendCustomTextMessage(_env, toUser, content) {
+        sent.push({ toUser, content });
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "success");
+  assert.equal(context.promises.length, 1);
+  assert.deepEqual(agentCalls, [
+    { userId: "o_user", text: "明天上海天气怎么样", channel: "mp" },
+  ]);
+  assert.equal(sent.length, 0);
+
+  resolveAgent({ route: "weather", reply: "上海明天晴。" });
+  await Promise.all(context.promises);
+  assert.deepEqual(sent, [{ toUser: "o_user", content: "上海明天晴。" }]);
+}
+
+async function verifyUnsupportedMessageIsIgnored() {
+  let agentCalls = 0;
+  const context = createContext();
+  const response = await handleMpRequest(
+    createPostRequest("image", ""),
+    createEnv(),
+    context.ctx,
+    createDependencies({
+      async runAgent() {
+        agentCalls += 1;
+        return { route: "chat", reply: "unexpected" };
+      },
+    }),
+  );
+
+  assert.equal(await response.text(), "success");
+  assert.equal(context.promises.length, 0);
+  assert.equal(agentCalls, 0);
+}
+
+async function verifyInvalidSignatureIsIgnored() {
+  const context = createContext();
+  const response = await handleMpRequest(
+    new Request("https://example.com/mp?signature=bad&timestamp=1710000000&nonce=nonce", {
+      method: "POST",
+      body: buildMessageXml("text", sampleText),
+    }),
+    createEnv(),
+    context.ctx,
+  );
+
+  assert.equal(await response.text(), "success");
+  assert.equal(context.promises.length, 0);
+}
+
+async function verifyAgentFailureGetsFallbackReply() {
+  const sent = [];
+  const context = createContext();
+  await handleMpRequest(
+    createPostRequest("text", sampleText),
+    createEnv(),
+    context.ctx,
+    createDependencies({
+      async runAgent() {
+        throw new Error("agent unavailable");
+      },
+      async sendCustomTextMessage(_env, toUser, content) {
+        sent.push({ toUser, content });
+      },
+    }),
+  );
+
+  await Promise.all(context.promises);
+  assert.deepEqual(sent, [{ toUser: "o_user", content: "这次消息处理失败了，请稍后再试。" }]);
+}
+
+async function verifyCustomMessageFailureDoesNotRejectTask() {
+  const context = createContext();
+  await handleMpRequest(
+    createPostRequest("text", sampleText),
+    createEnv(),
+    context.ctx,
+    createDependencies({
+      async sendCustomTextMessage() {
+        throw new Error("custom message unavailable");
+      },
+    }),
+  );
+
+  await Promise.all(context.promises);
+}
+
+function createPostRequest(msgType, content) {
+  const timestamp = "1710000000";
+  const nonce = "mp-nonce";
+  const signature = createSha1Signature(token, timestamp, nonce);
+
+  return new Request(
+    `https://example.com/mp?signature=${signature}&timestamp=${timestamp}&nonce=${nonce}`,
+    {
+      method: "POST",
+      body: buildMessageXml(msgType, content),
+    },
+  );
+}
+
+function buildMessageXml(msgType, content) {
+  return `
+    <xml>
+      <ToUserName><![CDATA[gh_app]]></ToUserName>
+      <FromUserName><![CDATA[o_user]]></FromUserName>
+      <CreateTime>1710000000</CreateTime>
+      <MsgType><![CDATA[${msgType}]]></MsgType>
+      <Content><![CDATA[${content}]]></Content>
+      <MsgId>1234567890</MsgId>
+    </xml>
+  `;
+}
+
+function createDependencies(overrides = {}) {
+  return {
+    createRuntime() {
+      return {};
+    },
+    async runAgent() {
+      return { route: "chat", reply: "Agent reply" };
+    },
+    async sendCustomTextMessage() {},
+    ...overrides,
+  };
+}
+
+function createEnv() {
+  return {
+    MP_TOKEN: token,
+    MP_APP_ID: "app-id",
+    MP_APP_SECRET: "app-secret",
+  };
+}
+
+function createContext() {
+  const promises = [];
+  return {
+    promises,
+    ctx: {
+      waitUntil(promise) {
+        promises.push(promise);
+      },
+      passThroughOnException() {},
+      props: {},
+    },
+  };
 }
 
 function createSha1Signature(...parts) {
   return createHash("sha1").update([...parts].sort().join("")).digest("hex");
 }
 
-function parseTextMessageXml(xmlText) {
-  const root = parseXmlRoot(xmlText);
-
-  return {
-    toUserName: readRequiredXmlString(root, "ToUserName"),
-    fromUserName: readRequiredXmlString(root, "FromUserName"),
-    createTime: readOptionalXmlString(root, "CreateTime"),
-    msgType: readRequiredXmlString(root, "MsgType"),
-    content: readOptionalXmlString(root, "Content") ?? "",
-    msgId: readOptionalXmlString(root, "MsgId"),
-  };
-}
-
-function buildTextReplyXml(message, content) {
-  return [
-    "<xml>",
-    `<ToUserName><![CDATA[${message.fromUserName}]]></ToUserName>`,
-    `<FromUserName><![CDATA[${message.toUserName}]]></FromUserName>`,
-    `<CreateTime>${Math.floor(Date.now() / 1000)}</CreateTime>`,
-    "<MsgType><![CDATA[text]]></MsgType>",
-    `<Content><![CDATA[${content}]]></Content>`,
-    "</xml>",
-  ].join("");
-}
-
-function parseXmlRoot(xmlText) {
-  const parsed = xmlParser.parse(xmlText);
-  const root = parsed.xml;
-
-  if (!root || typeof root !== "object") {
-    throw new Error("Invalid XML payload.");
-  }
-
-  return root;
-}
-
-function readRequiredXmlString(root, key) {
-  const value = readOptionalXmlString(root, key);
-
-  if (!value) {
-    throw new Error(`Missing XML field: ${key}.`);
-  }
-
-  return value;
-}
-
-function readOptionalXmlString(root, key) {
-  const value = root[key];
-
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  return String(value);
-}
-
-main();
+await main();

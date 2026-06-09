@@ -14,8 +14,8 @@
 - Worker：`https://personal-agent.ye344136941.workers.dev`
 - H5：`https://personal-agent.ye344136941.workers.dev/chat`
 - 最新提交：`59a0587 feat: protect h5 with access password`
-- 当前部署版本：`dfa04a04-e058-4de5-8718-d551da91dd29`
-- 工作区：干净
+- 当前部署版本：`0325418f-367c-49f0-84bc-9d4b6ac0d8c2`
+- 工作区：存在本次微信公众号接入 Agent Core 的未提交修改
 
 ## 关键决策
 
@@ -118,9 +118,14 @@
 
 - 支持 URL 签名验证。
 - 支持明文和加密消息解析。
-- POST 文本消息返回测试回复。
-- 可尝试发送测试客服消息。
-- 尚未调用真实 Agent Core。
+- POST 文本消息验签、解密和解析后立即返回 `success`。
+- 使用 `ctx.waitUntil()` 异步调用真实 Agent Core，避免等待搜索、网页读取或 LLM。
+- 使用发送者 OpenID 作为 Agent `userId`。
+- Agent 结果通过公众号客服消息 API 返回。
+- 客服文本按平台 2048 字节限制安全截断。
+- Agent 或客服消息失败会输出不含 Secret 的明确日志，不影响 H5。
+- `/mp` 保持公开，不受 H5 访问口令保护。
+- 公众号不实现主动定时提醒推送。
 
 #### `/wecom` 企业微信
 
@@ -143,3 +148,29 @@ type AgentRoute =
   | "weather"
   | "search"
   | "chat";
+```
+
+## Agent Runtime
+
+- `src/agentRuntime.ts` 是统一 Agent Runtime 构造器。
+- H5 与微信公众号复用现有 Supabase、Kimi、Tavily、Open-Meteo、Jina Reader 客户端。
+- 企业微信模块保留原状，公众号接入不依赖企业微信。
+
+## 公众号限制与运维注意
+
+- 回调必须快速返回；当前 POST 返回 `success`，慢任务进入 `ctx.waitUntil()`。
+- Cloudflare Workers 的 `waitUntil()` 不是可靠任务队列，超慢任务仍可能被平台取消。
+- 客服消息受公众号权限和用户互动窗口约束，无法发送时只记录失败日志。
+- 当前 Cloudflare Secrets 已包含 `MP_TOKEN`、`MP_APP_ID`、`MP_APP_SECRET`；`MP_ENCODING_AES_KEY` 仅在公众号启用 AES 消息模式时需要配置。
+- 不要读取、输出或提交任何 Secret。
+
+## 2026-06-07 线上验收
+
+- 已部署 Worker 版本 `0325418f-367c-49f0-84bc-9d4b6ac0d8c2`。
+- `/` 返回 HTTP 200。
+- `/chat` 未登录时跳转 `/login`。
+- `/api/chat` 未登录时返回 HTTP 401。
+- `/mp` 无签名时返回 HTTP 403，证明路由公开且进入公众号处理器。
+- `/mp` 无效签名 POST 返回 `success`，不触发 Agent。
+- `/wecom` 无签名时返回 HTTP 403，模块保持公开且未删除。
+- 真实公众号客服回复需要由真实微信用户发送消息进行最终验收，不读取 Secret、不伪造 OpenID。

@@ -136,8 +136,13 @@ https://personal-agent.ye344136941.workers.dev/wecom
 Official Account behavior:
 
 - GET verifies `signature`, `timestamp`, `nonce`, `echostr`.
-- POST text messages return a passive XML reply immediately.
-- If `MP_APP_ID` and `MP_APP_SECRET` are configured, it also sends a background custom-service test reply.
+- POST verifies and parses plaintext or encrypted messages, then returns `success` immediately.
+- Text messages run the shared Agent Core in `ctx.waitUntil()`.
+- The sender OpenID is used as the Agent `userId`.
+- Agent results are returned through the Official Account custom-service message API.
+- Custom-service text is safely truncated to the 2048-byte platform limit.
+- Custom-service delivery failures are logged and do not affect H5.
+- The Official Account channel does not proactively send scheduled reminders.
 
 WeCom behavior:
 
@@ -218,6 +223,10 @@ Current routes:
 - weather messages query Open-Meteo. A city stated by the user becomes their remembered city.
 - search messages query Tavily Top 3 and use the configured LLM to synthesize an answer with sources.
 - everything else routes to the configured OpenAI-compatible LLM.
+
+`src/agentRuntime.ts` is the shared Agent Runtime constructor used by H5 and the
+Official Account channel. It assembles the existing Supabase, Kimi, Tavily,
+Open-Meteo, and Jina Reader clients in one place.
 
 Web summary example:
 

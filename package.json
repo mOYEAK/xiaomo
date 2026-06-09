@@ -16,7 +16,7 @@
     "verify:search": "npm run build:verify --silent && node scripts/verify-search.mjs",
     "verify:weather": "npm run build:verify --silent && node scripts/verify-weather.mjs",
     "verify:web": "npm run build:verify --silent && node scripts/verify-web-reader.mjs",
-    "verify:mp": "node scripts/verify-mp.mjs",
+    "verify:mp": "npm run build:verify --silent && node scripts/verify-mp.mjs",
     "verify:wecom": "node scripts/verify-wecom.mjs",
     "typecheck": "tsc --noEmit"
   },
