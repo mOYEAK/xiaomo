@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { handleMpRequest } from "../dist/verify/mpHandler.js";
+import { handleMpRequest } from "../dist/verify/channels/mp/mpHandler.js";
 import {
   buildTextReplyXml,
   parseOfficialAccountTextMessage,
-} from "../dist/verify/wechatOfficial.js";
-import { truncateOfficialAccountText } from "../dist/verify/wechatOfficialClient.js";
+} from "../dist/verify/channels/mp/officialAccount.js";
+import { truncateOfficialAccountText } from "../dist/verify/clients/officialAccountClient.js";
 
 const token = "mp-token";
 const sampleText = "你好";
@@ -42,7 +42,9 @@ async function verifyPublicUrlSignature() {
 }
 
 function verifyTextMessageParsing() {
-  const message = parseOfficialAccountTextMessage(buildMessageXml("text", sampleText));
+  const message = parseOfficialAccountTextMessage(
+    buildMessageXml("text", sampleText),
+  );
 
   assert.equal(message.toUserName, "gh_app");
   assert.equal(message.fromUserName, "o_user");
@@ -132,10 +134,13 @@ async function verifyUnsupportedMessageIsIgnored() {
 async function verifyInvalidSignatureIsIgnored() {
   const context = createContext();
   const response = await handleMpRequest(
-    new Request("https://example.com/mp?signature=bad&timestamp=1710000000&nonce=nonce", {
-      method: "POST",
-      body: buildMessageXml("text", sampleText),
-    }),
+    new Request(
+      "https://example.com/mp?signature=bad&timestamp=1710000000&nonce=nonce",
+      {
+        method: "POST",
+        body: buildMessageXml("text", sampleText),
+      },
+    ),
     createEnv(),
     context.ctx,
   );
@@ -162,7 +167,9 @@ async function verifyAgentFailureGetsFallbackReply() {
   );
 
   await Promise.all(context.promises);
-  assert.deepEqual(sent, [{ toUser: "o_user", content: "这次消息处理失败了，请稍后再试。" }]);
+  assert.deepEqual(sent, [
+    { toUser: "o_user", content: "这次消息处理失败了，请稍后再试。" },
+  ]);
 }
 
 async function verifyCustomMessageFailureDoesNotRejectTask() {
@@ -244,7 +251,9 @@ function createContext() {
 }
 
 function createSha1Signature(...parts) {
-  return createHash("sha1").update([...parts].sort().join("")).digest("hex");
+  return createHash("sha1")
+    .update([...parts].sort().join(""))
+    .digest("hex");
 }
 
 await main();

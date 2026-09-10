@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { routeMessage, runAgent } from "../dist/verify/agentCore.js";
-import { parseReminderRequest } from "../dist/verify/reminderParser.js";
-import { WebReaderError } from "../dist/verify/webReader.js";
+import { routeMessage, runAgent } from "../dist/verify/core/agent/agent.js";
+import { parseReminderRequest } from "../dist/verify/core/agent/reminderParser.js";
+import { WebReaderError } from "../dist/verify/clients/webReader.js";
 
 const now = new Date("2026-06-05T04:00:00.000Z");
 
@@ -23,18 +23,18 @@ async function main() {
 
 function verifyRoutes() {
   assert.equal(routeMessage("https://example.com/article"), "web_summary");
-  assert.equal(routeMessage("\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167"), "reminder");
-  assert.equal(routeMessage("\u67e5\u770b\u63d0\u9192"), "reminder_list");
-  assert.equal(routeMessage("\u53d6\u6d88\u63d0\u9192"), "reminder_cancel");
+  assert.equal(routeMessage("明天 8 点提醒我带护照"), "reminder");
+  assert.equal(routeMessage("查看提醒"), "reminder_list");
+  assert.equal(routeMessage("取消提醒"), "reminder_cancel");
   assert.equal(routeMessage("记一下：护照放在书桌抽屉"), "memo_create");
   assert.equal(routeMessage("我之前把护照放哪了"), "memo_search");
   assert.equal(routeMessage("查看备忘录"), "memo_list");
   assert.equal(routeMessage("删除备忘录"), "memo_delete");
-  assert.equal(routeMessage("\u660e\u5929\u4e0a\u6d77\u5929\u6c14\u600e\u4e48\u6837"), "weather");
-  assert.equal(routeMessage("\u5e2e\u6211\u67e5\u4e00\u4e0b\u6700\u65b0\u6d88\u606f"), "search");
-  assert.equal(routeMessage("\u6700\u8fd1\u4eba\u5de5\u667a\u80fd\u65b0\u95fb"), "search");
-  assert.equal(routeMessage("\u6211\u6700\u8fd1\u5f88\u7d2f"), "chat");
-  assert.equal(routeMessage("\u4f60\u597d"), "chat");
+  assert.equal(routeMessage("明天上海天气怎么样"), "weather");
+  assert.equal(routeMessage("帮我查一下最新消息"), "search");
+  assert.equal(routeMessage("最近人工智能新闻"), "search");
+  assert.equal(routeMessage("我最近很累"), "chat");
+  assert.equal(routeMessage("你好"), "chat");
 }
 
 async function verifyWebSummary() {
@@ -42,21 +42,21 @@ async function verifyWebSummary() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u603b\u7ed3 https://example.com/article",
+      text: "总结 https://example.com/article",
       channel: "web",
     },
     {
       llmClient: {
         async complete(messages) {
           llmCalls.push(messages);
-          return "\u6838\u5fc3\u8981\u70b9\n- \u8981\u70b9\u4e00\n\n\u7b80\u77ed\u7ed3\u8bba\n\u8fd9\u662f\u7ed3\u8bba\u3002";
+          return "核心要点\n- 要点一\n\n简短结论\n这是结论。";
         },
       },
       webReader: {
         async read(url) {
           return {
             url,
-            content: "\u8fd9\u662f\u7f51\u9875\u6b63\u6587\u3002",
+            content: "这是网页正文。",
             truncated: false,
           };
         },
@@ -65,10 +65,10 @@ async function verifyWebSummary() {
   );
 
   assert.equal(output.route, "web_summary");
-  assert.match(output.reply, /\u6838\u5fc3\u8981\u70b9/);
+  assert.match(output.reply, /核心要点/);
   assert.match(output.reply, /https:\/\/example\.com\/article/);
   assert.equal(llmCalls.length, 1);
-  assert.match(llmCalls[0][1].content, /\u8fd9\u662f\u7f51\u9875\u6b63\u6587/);
+  assert.match(llmCalls[0][1].content, /这是网页正文/);
 }
 
 async function verifyWebSummaryAccessRestriction() {
@@ -93,8 +93,8 @@ async function verifyWebSummaryAccessRestriction() {
   );
 
   assert.equal(output.route, "web_summary");
-  assert.match(output.reply, /\u516c\u5f00\u5206\u4eab\u94fe\u63a5/);
-  assert.match(output.reply, /\u7c98\u8d34/);
+  assert.match(output.reply, /公开分享链接/);
+  assert.match(output.reply, /粘贴/);
 }
 
 async function verifyWebSummaryFailure() {
@@ -119,7 +119,7 @@ async function verifyWebSummaryFailure() {
   );
 
   assert.equal(output.route, "web_summary");
-  assert.match(output.reply, /\u65e0\u6cd5\u8bfb\u53d6\u6216\u603b\u7ed3/);
+  assert.match(output.reply, /无法读取或总结/);
 }
 
 async function verifyAgentChat() {
@@ -127,23 +127,23 @@ async function verifyAgentChat() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u4f60\u597d",
+      text: "你好",
       channel: "web",
     },
     {
       llmClient: {
         async complete(messages) {
           calls.push(messages);
-          return "\u4f60\u597d\uff0c\u6709\u4ec0\u4e48\u53ef\u4ee5\u5e2e\u4f60\uff1f";
+          return "你好，有什么可以帮你？";
         },
       },
     },
   );
 
   assert.equal(output.route, "chat");
-  assert.equal(output.reply, "\u4f60\u597d\uff0c\u6709\u4ec0\u4e48\u53ef\u4ee5\u5e2e\u4f60\uff1f");
+  assert.equal(output.reply, "你好，有什么可以帮你？");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0][1].content, "\u4f60\u597d");
+  assert.equal(calls[0][1].content, "你好");
 }
 
 async function verifyReminderDoesNotCallLlm() {
@@ -151,7 +151,7 @@ async function verifyReminderDoesNotCallLlm() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167",
+      text: "明天 8 点提醒我带护照",
       channel: "web",
     },
     {
@@ -171,31 +171,22 @@ async function verifyReminderDoesNotCallLlm() {
 }
 
 function verifyReminderParsing() {
-  const tomorrow = parseReminderRequest(
-    "\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167",
-    now,
-  );
+  const tomorrow = parseReminderRequest("明天 8 点提醒我带护照", now);
   assert.equal(tomorrow.ok, true);
-  assert.equal(tomorrow.reminder.content, "\u5e26\u62a4\u7167");
+  assert.equal(tomorrow.reminder.content, "带护照");
   assert.equal(tomorrow.reminder.targetTime, "2026-06-06T00:00:00.000Z");
 
-  const tonight = parseReminderRequest(
-    "\u4eca\u665a 10 \u70b9\u63d0\u9192\u6211\u4ea4\u7535\u8d39",
-    now,
-  );
+  const tonight = parseReminderRequest("今晚 10 点提醒我交电费", now);
   assert.equal(tonight.ok, true);
-  assert.equal(tonight.reminder.content, "\u4ea4\u7535\u8d39");
+  assert.equal(tonight.reminder.content, "交电费");
   assert.equal(tonight.reminder.targetTime, "2026-06-05T14:00:00.000Z");
 
-  const nextMonday = parseReminderRequest(
-    "\u4e0b\u5468\u4e00\u4e0a\u5348 9 \u70b9\u63d0\u9192\u6211\u5f00\u4f1a",
-    now,
-  );
+  const nextMonday = parseReminderRequest("下周一上午 9 点提醒我开会", now);
   assert.equal(nextMonday.ok, true);
-  assert.equal(nextMonday.reminder.content, "\u5f00\u4f1a");
+  assert.equal(nextMonday.reminder.content, "开会");
   assert.equal(nextMonday.reminder.targetTime, "2026-06-08T01:00:00.000Z");
 
-  const missingTime = parseReminderRequest("\u63d0\u9192\u6211\u5e26\u4f1e", now);
+  const missingTime = parseReminderRequest("提醒我带伞", now);
   assert.deepEqual(missingTime, { ok: false, reason: "missing_time" });
 
   const fiveMinutes = parseReminderRequest("5 分钟后提醒我测试提醒", now);
@@ -214,7 +205,7 @@ async function verifyAgentReminderCreation() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167",
+      text: "明天 8 点提醒我带护照",
       channel: "web",
     },
     {
@@ -246,7 +237,7 @@ async function verifyAgentReminderCreation() {
   );
 
   assert.equal(output.route, "reminder");
-  assert.match(output.reply, /\u5e26\u62a4\u7167/);
+  assert.match(output.reply, /带护照/);
   assert.equal(created.length, 1);
   assert.equal(created[0].userId, "web-user");
   assert.equal(created[0].reminder.targetTime, "2026-06-06T00:00:00.000Z");
@@ -256,7 +247,7 @@ async function verifyAgentReminderList() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u67e5\u770b\u63d0\u9192",
+      text: "查看提醒",
       channel: "web",
     },
     {
@@ -266,15 +257,15 @@ async function verifyAgentReminderList() {
   );
 
   assert.equal(output.route, "reminder_list");
-  assert.match(output.reply, /\u4f60\u7684\u5f85\u63d0\u9192/);
-  assert.match(output.reply, /\u5e26\u62a4\u7167/);
+  assert.match(output.reply, /你的待提醒/);
+  assert.match(output.reply, /带护照/);
 }
 
 async function verifyAgentReminderCancel() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u53d6\u6d88\u63d0\u9192",
+      text: "取消提醒",
       channel: "web",
     },
     {
@@ -284,22 +275,22 @@ async function verifyAgentReminderCancel() {
   );
 
   assert.equal(output.route, "reminder_cancel");
-  assert.match(output.reply, /\u53ef\u53d6\u6d88/);
-  assert.match(output.reply, /\u5e26\u62a4\u7167/);
+  assert.match(output.reply, /可取消/);
+  assert.match(output.reply, /带护照/);
 }
 
 async function verifyReminderFailure() {
   const output = await runAgent(
     {
       userId: "web-user",
-      text: "\u63d0\u9192\u6211\u5e26\u4f1e",
+      text: "提醒我带伞",
       channel: "web",
     },
     { now },
   );
 
   assert.equal(output.route, "reminder");
-  assert.match(output.reply, /\u5177\u4f53\u65f6\u95f4/);
+  assert.match(output.reply, /具体时间/);
 }
 
 function createMemoryReminderStore() {
@@ -321,8 +312,8 @@ function createMemoryReminderStore() {
         {
           id: "reminder-1",
           user_id: "web-user",
-          content: "\u5e26\u62a4\u7167",
-          source_message: "\u660e\u5929 8 \u70b9\u63d0\u9192\u6211\u5e26\u62a4\u7167",
+          content: "带护照",
+          source_message: "明天 8 点提醒我带护照",
           target_time: "2026-06-06T00:00:00.000Z",
           timezone: "Asia/Shanghai",
           status: "pending",

@@ -1,101 +1,112 @@
-import type { AgentRuntimeEnv } from "./agentRuntime";
-import { handleMpRequest, type MpEnv } from "./mpHandler";
-import { handleWecomRequest, type WecomEnv } from "./wecomHandler";
 import {
+  handleCancelReminderApi,
   handleChatApi,
   handleChatPage,
-  handleCancelReminderApi,
+  handleDeleteMemoApi,
   handleDueRemindersApi,
+  handleMemosApi,
   handleRemindersApi,
   handleMarkReminderSentApi,
-  handleMemosApi,
-  handleDeleteMemoApi,
-} from "./webChat";
-
-export interface Env extends MpEnv, WecomEnv, AgentRuntimeEnv, AuthEnv {}
-
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-
-    console.info("Incoming channel request.", {
-      method: request.method,
-      path: url.pathname,
-      queryKeys: [...url.searchParams.keys()],
-    });
-
-    if (url.pathname === "/mp") {
-      return handleMpRequest(request, env, ctx);
-    }
-
-    if (url.pathname === "/wecom") {
-      return handleWecomRequest(request, env, ctx);
-    }
-
-    if (url.pathname === "/login") {
-      return handleLoginRequest(request, env);
-    }
-
-    if (url.pathname === "/logout") {
-      return handleLogoutRequest(request);
-    }
-
-    if ((url.pathname === "/chat" || url.pathname.startsWith("/api/")) && hasAuthConfig(env)) {
-      if (!(await isAuthenticated(request, env))) {
-        return unauthorizedResponse(request);
-      }
-    }
-
-    if (url.pathname === "/chat") {
-      return handleChatPage();
-    }
-
-    if (url.pathname === "/api/chat") {
-      return handleChatApi(request, env);
-    }
-
-    if (url.pathname === "/api/reminders/due") {
-      return handleDueRemindersApi(request, env);
-    }
-
-    if (url.pathname === "/api/reminders") {
-      return handleRemindersApi(request, env);
-    }
-
-    if (url.pathname === "/api/memos") {
-      return handleMemosApi(request, env);
-    }
-
-    const deleteMemoMatch = url.pathname.match(/^\/api\/memos\/([^/]+)\/delete$/);
-
-    if (deleteMemoMatch) {
-      return handleDeleteMemoApi(request, env, decodeURIComponent(deleteMemoMatch[1]));
-    }
-
-    const cancelReminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/cancel$/);
-
-    if (cancelReminderMatch) {
-      return handleCancelReminderApi(request, env, decodeURIComponent(cancelReminderMatch[1]));
-    }
-
-    const markReminderSentMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)\/mark-sent$/);
-
-    if (markReminderSentMatch) {
-      return handleMarkReminderSentApi(request, env, decodeURIComponent(markReminderSentMatch[1]));
-    }
-
-    if (url.pathname === "/") {
-      return new Response("Personal Agent Worker is running. Use /chat, /api/chat, /mp or /wecom.");
-    }
-
-    return new Response("Not Found", { status: 404 });
-  },
-} satisfies ExportedHandler<Env>;
+} from "./channels/web/chatApi";
 import {
   handleLoginRequest,
   handleLogoutRequest,
   hasAuthConfig,
   isAuthenticated,
   unauthorizedResponse,
-  type AuthEnv,
-} from "./auth";
+} from "./channels/web/auth";
+import { handleMpRequest } from "./channels/mp/mpHandler";
+import { handleWecomRequest } from "./channels/wecom/wecomHandler";
+import { jsonResponse } from "./lib/http";
+import type { AppEnv } from "./config/env";
+
+export type Env = AppEnv;
+
+type RouteHandler = (
+  request: Request,
+  env: AppEnv,
+  match: RegExpMatchArray,
+) => Promise<Response> | Response;
+
+interface Route {
+  pattern: RegExp;
+  handler: RouteHandler;
+}
+
+const routes: Route[] = [
+  // 公开路由：登录、健康检查（微信通道在 fetch 中单独分发，需要 ExecutionContext）
+  {
+    pattern: /^\/$/,
+    handler: () => new Response("Personal Agent Worker is running."),
+  },
+  { pattern: /^\/login$/, handler: handleLoginRequest },
+  { pattern: /^\/logout$/, handler: handleLogoutRequest },
+  // H5 页面
+  { pattern: /^\/chat$/, handler: handleChatPage },
+  // H5 API
+  { pattern: /^\/api\/chat$/, handler: handleChatApi },
+  { pattern: /^\/api\/memos$/, handler: handleMemosApi },
+  {
+    pattern: /^\/api\/memos\/([^/]+)\/delete$/,
+    handler: (request, env, match) =>
+      handleDeleteMemoApi(request, env, decodeURIComponent(match[1])),
+  },
+  { pattern: /^\/api\/reminders$/, handler: handleRemindersApi },
+  { pattern: /^\/api\/reminders\/due$/, handler: handleDueRemindersApi },
+  {
+    pattern: /^\/api\/reminders\/([^/]+)\/cancel$/,
+    handler: (request, env, match) =>
+      handleCancelReminderApi(request, env, decodeURIComponent(match[1])),
+  },
+  {
+    pattern: /^\/api\/reminders\/([^/]+)\/mark-sent$/,
+    handler: (request, env, match) =>
+      handleMarkReminderSentApi(request, env, decodeURIComponent(match[1])),
+  },
+];
+
+const publicPaths = new Set(["/", "/login", "/logout", "/mp", "/wecom"]);
+
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const url = new URL(request.url);
+    console.info("Incoming request.", {
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    // 微信通道需要 ExecutionContext，单独分发
+    if (url.pathname === "/mp") {
+      return handleMpRequest(request, env, ctx);
+    }
+    if (url.pathname === "/wecom") {
+      return handleWecomRequest(request, env, ctx);
+    }
+
+    // H5 受保护区域鉴权
+    if (
+      !publicPaths.has(url.pathname) &&
+      hasAuthConfig(env) &&
+      !(await isAuthenticated(request, env))
+    ) {
+      return unauthorizedResponse(request);
+    }
+
+    const route = routes
+      .map((candidate) => ({
+        candidate,
+        match: url.pathname.match(candidate.pattern),
+      }))
+      .find((entry) => entry.match);
+
+    if (!route?.match) {
+      return jsonResponse({ error: "Not Found" }, 404);
+    }
+
+    return route.candidate.handler(request, env, route.match);
+  },
+};

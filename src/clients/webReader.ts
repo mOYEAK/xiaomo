@@ -23,7 +23,7 @@ export class WebReaderError extends Error {
   }
 }
 
-const urlPattern = /https?:\/\/[^\s<>"'\u3002\uff0c\uff01\uff1f\uff1b\uff09\]]+/i;
+const urlPattern = /https?:\/\/[^\s<>"'。，！？；）\]]+/i;
 const jinaReaderPrefix = "https://r.jina.ai/";
 
 export function extractFirstUrl(text: string): string | undefined {
@@ -45,13 +45,25 @@ export function createJinaWebReader(options: WebReaderOptions = {}): WebReader {
   return {
     async read(url) {
       if (isKnownPrivateUrl(url)) {
-        throw new WebReaderError("Web page is a private chat URL.", "access_restricted");
+        throw new WebReaderError(
+          "Web page is a private chat URL.",
+          "access_restricted",
+        );
       }
 
       try {
-        return await readDocument(buildJinaReaderUrl(url), url, timeoutMs, maxCharacters, false);
+        return await readDocument(
+          buildJinaReaderUrl(url),
+          url,
+          timeoutMs,
+          maxCharacters,
+          false,
+        );
       } catch (jinaError) {
-        if (jinaError instanceof WebReaderError && jinaError.code === "access_restricted") {
+        if (
+          jinaError instanceof WebReaderError &&
+          jinaError.code === "access_restricted"
+        ) {
           throw jinaError;
         }
 
@@ -72,7 +84,8 @@ function isKnownPrivateUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return (
-      (parsed.hostname === "doubao.com" || parsed.hostname === "www.doubao.com") &&
+      (parsed.hostname === "doubao.com" ||
+        parsed.hostname === "www.doubao.com") &&
       parsed.pathname.startsWith("/chat/")
     );
   } catch {
@@ -93,21 +106,28 @@ async function readDocument(
   try {
     const response = await fetch(requestUrl, {
       headers: {
-        Accept: stripHtml ? "text/html, text/plain;q=0.9, */*;q=0.1" : "text/markdown, text/plain;q=0.9, */*;q=0.1",
+        Accept: stripHtml
+          ? "text/html, text/plain;q=0.9, */*;q=0.1"
+          : "text/markdown, text/plain;q=0.9, */*;q=0.1",
         "User-Agent": "Personal-Agent-Web-Reader/1.0",
       },
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      throw new Error(`request failed: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `request failed: ${response.status} ${response.statusText}`,
+      );
     }
 
     const rawContent = (await response.text()).trim();
     const content = stripHtml ? htmlToText(rawContent) : rawContent;
 
     if (isAccessRestricted(content)) {
-      throw new WebReaderError("Web page requires login or has access restrictions.", "access_restricted");
+      throw new WebReaderError(
+        "Web page requires login or has access restrictions.",
+        "access_restricted",
+      );
     }
 
     if (!content) {
@@ -121,7 +141,7 @@ async function readDocument(
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("request timed out");
+      throw new Error("request timed out", { cause: error });
     }
 
     throw error;
@@ -133,10 +153,10 @@ async function readDocument(
 function isAccessRestricted(content: string): boolean {
   const normalized = content.toLowerCase();
   return [
-    "\u8bf7\u5148\u767b\u5f55",
-    "\u9700\u8981\u767b\u5f55",
-    "\u767b\u5f55\u540e\u67e5\u770b",
-    "\u53d7\u533a\u57df\u9650\u5236",
+    "请先登录",
+    "需要登录",
+    "登录后查看",
+    "受区域限制",
     "sign in to continue",
     "log in to continue",
     "login required",

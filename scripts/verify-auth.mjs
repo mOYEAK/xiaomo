@@ -5,7 +5,7 @@ import {
   handleLogoutRequest,
   isAuthenticated,
   unauthorizedResponse,
-} from "../dist/verify/auth.js";
+} from "../dist/verify/channels/web/auth.js";
 import worker from "../dist/verify/index.js";
 
 const env = {
@@ -76,7 +76,9 @@ function verifyUnauthorizedResponses() {
 }
 
 function verifyLogout() {
-  const response = handleLogoutRequest(new Request("https://example.com/logout"));
+  const response = handleLogoutRequest(
+    new Request("https://example.com/logout"),
+  );
   assert.equal(response.status, 302);
   assert.match(response.headers.get("Set-Cookie"), /Max-Age=0/);
 }

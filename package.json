@@ -18,18 +18,26 @@
     "verify:web": "npm run build:verify --silent && node scripts/verify-web-reader.mjs",
     "verify:mp": "npm run build:verify --silent && node scripts/verify-mp.mjs",
     "verify:wecom": "node scripts/verify-wecom.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write src scripts",
+    "format:check": "prettier --check src scripts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "crypto-js": "^4.2.0",
     "fast-xml-parser": "^5.8.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260531.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
     "wrangler": "^4.96.0"
   }
 }

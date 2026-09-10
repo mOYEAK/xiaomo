@@ -1,4 +1,4 @@
-interface WecomEnv {
+interface WecomClientEnv {
   WX_CORP_ID: string;
   WX_APP_SECRET: string;
   WX_AGENT_ID: string;
@@ -19,7 +19,9 @@ interface SendMessageResponse {
   invalidtag?: string;
 }
 
-export async function getWecomAccessToken(env: WecomEnv): Promise<string> {
+export async function getWecomAccessToken(
+  env: WecomClientEnv,
+): Promise<string> {
   const url = new URL("https://qyapi.weixin.qq.com/cgi-bin/gettoken");
   url.searchParams.set("corpid", env.WX_CORP_ID);
   url.searchParams.set("corpsecret", env.WX_APP_SECRET);
@@ -28,14 +30,16 @@ export async function getWecomAccessToken(env: WecomEnv): Promise<string> {
   const payload = (await response.json()) as AccessTokenResponse;
 
   if (!response.ok || !payload.access_token) {
-    throw new Error(`Failed to get WeCom access_token: ${payload.errmsg ?? response.statusText}`);
+    throw new Error(
+      `Failed to get WeCom access_token: ${payload.errmsg ?? response.statusText}`,
+    );
   }
 
   return payload.access_token;
 }
 
 export async function sendWecomTextMessage(
-  env: WecomEnv,
+  env: WecomClientEnv,
   toUser: string,
   content: string,
 ): Promise<void> {
@@ -61,6 +65,8 @@ export async function sendWecomTextMessage(
   const payload = (await response.json()) as SendMessageResponse;
 
   if (!response.ok || payload.errcode !== 0) {
-    throw new Error(`Failed to send WeCom message: ${payload.errmsg ?? response.statusText}`);
+    throw new Error(
+      `Failed to send WeCom message: ${payload.errmsg ?? response.statusText}`,
+    );
   }
 }

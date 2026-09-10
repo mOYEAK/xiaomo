@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { runAgent } from "../dist/verify/agentCore.js";
+import { runAgent } from "../dist/verify/core/agent/agent.js";
 import {
   createTavilySearchClient,
   extractSearchQuery,
   resolveSearchTopic,
-} from "../dist/verify/searchClient.js";
+} from "../dist/verify/clients/searchClient.js";
 
 async function main() {
   verifyParsing();

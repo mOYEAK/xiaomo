@@ -1,4 +1,11 @@
-export const DEFAULT_TIMEZONE = "Asia/Shanghai";
+import {
+  DEFAULT_TIMEZONE,
+  fromShanghaiParts,
+  getShanghaiParts,
+  type ShanghaiDateParts,
+} from "../../lib/time";
+
+export { DEFAULT_TIMEZONE };
 
 export interface ParsedReminder {
   content: string;
@@ -11,59 +18,50 @@ export type ReminderParseResult =
   | { ok: true; reminder: ParsedReminder }
   | { ok: false; reason: "missing_time" | "missing_content" };
 
-interface ShanghaiDateParts {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-  weekday: number;
-}
-
-const shanghaiOffsetMs = 8 * 60 * 60 * 1000;
 const minuteMs = 60 * 1000;
 const dayMs = 24 * 60 * 60 * 1000;
 
 const chineseDigits: Record<string, number> = {
-  "\u96f6": 0,
-  "\u3007": 0,
-  "\u4e00": 1,
-  "\u4e8c": 2,
-  "\u4e24": 2,
-  "\u4e09": 3,
-  "\u56db": 4,
-  "\u4e94": 5,
-  "\u516d": 6,
-  "\u4e03": 7,
-  "\u516b": 8,
-  "\u4e5d": 9,
+  零: 0,
+  〇: 0,
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
 };
 
 const weekdayDigits: Record<string, number> = {
-  "\u4e00": 1,
-  "\u4e8c": 2,
-  "\u4e09": 3,
-  "\u56db": 4,
-  "\u4e94": 5,
-  "\u516d": 6,
-  "\u65e5": 0,
-  "\u5929": 0,
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  日: 0,
+  天: 0,
 };
 
-const triggerPattern = /(\u63d0\u9192\u6211|\u63d0\u9192|\u8bb0\u5f97|\u5230\u65f6\u5019)/;
-const datePattern =
-  /(\u4eca\u5929|\u660e\u5929|\u540e\u5929|\u4eca\u665a|\u660e\u65e9|\u660e\u665a|\u4e0b\u5468[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/g;
+const triggerPattern = /(提醒我|提醒|记得|到时候)/;
+const datePattern = /(今天|明天|后天|今晚|明早|明晚|下周[一二三四五六日天])/g;
 const dateTestPattern =
-  /(\u4eca\u5929|\u660e\u5929|\u540e\u5929|\u4eca\u665a|\u660e\u65e9|\u660e\u665a|\u4e0b\u5468[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/;
-const periodPattern = /(\u51cc\u6668|\u65e9\u4e0a|\u4e0a\u5348|\u4e2d\u5348|\u4e0b\u5348|\u665a\u4e0a|\u4eca\u665a)/g;
-const colonTimePattern = /([0-9]{1,2})\s*[:\uff1a]\s*([0-9]{1,2})/;
+  /(今天|明天|后天|今晚|明早|明晚|下周[一二三四五六日天])/;
+const periodPattern = /(凌晨|早上|上午|中午|下午|晚上|今晚)/g;
+const colonTimePattern = /([0-9]{1,2})\s*[:：]\s*([0-9]{1,2})/;
 const pointTimePattern =
-  /([0-9]{1,2}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,3})\s*(?:\u70b9|\u65f6)(?:\s*(\u534a|([0-9]{1,2}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,3})\s*\u5206?))?/;
+  /([0-9]{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*(?:点|时)(?:\s*(半|([0-9]{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*分?))?/;
 const relativeTimePattern =
-  /([0-9]{1,4}|[\u96f6\u3007\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]{1,4})\s*(\u5206\u949f|\u5c0f\u65f6)\s*\u540e/;
+  /([0-9]{1,4}|[零〇一二两三四五六七八九十]{1,4})\s*(分钟|小时)\s*后/;
 
-export function parseReminderRequest(text: string, now = new Date()): ReminderParseResult {
+export function parseReminderRequest(
+  text: string,
+  now = new Date(),
+): ReminderParseResult {
   const sourceMessage = text.trim();
   const relativeTime = parseRelativeTime(sourceMessage, now);
 
@@ -103,7 +101,10 @@ export function parseReminderRequest(text: string, now = new Date()): ReminderPa
     weekday: 0,
   });
 
-  if (!hasExplicitDate(sourceMessage) && targetTime.getTime() <= now.getTime()) {
+  if (
+    !hasExplicitDate(sourceMessage) &&
+    targetTime.getTime() <= now.getTime()
+  ) {
     targetTime = new Date(targetTime.getTime() + dayMs);
   }
 
@@ -137,7 +138,8 @@ function parseRelativeTime(text: string, now: Date): Date | undefined {
     return undefined;
   }
 
-  const durationMs = match[2] === "\u5c0f\u65f6" ? amount * 60 * minuteMs : amount * minuteMs;
+  const durationMs =
+    match[2] === "小时" ? amount * 60 * minuteMs : amount * minuteMs;
   return new Date(now.getTime() + durationMs);
 }
 
@@ -163,7 +165,8 @@ function parseTime(text: string): { hour: number; minute: number } | undefined {
   }
 
   const hour = parseNumberToken(pointMatch[1]);
-  const minute = pointMatch[2] === "\u534a" ? 30 : parseNumberToken(pointMatch[3] ?? "0");
+  const minute =
+    pointMatch[2] === "半" ? 30 : parseNumberToken(pointMatch[3] ?? "0");
 
   if (hour === undefined || minute === undefined || hour > 23 || minute > 59) {
     return undefined;
@@ -177,35 +180,40 @@ function parseNumberToken(token: string): number | undefined {
     return Number(token);
   }
 
-  if (token === "\u5341") {
+  if (token === "十") {
     return 10;
   }
 
-  if (token.includes("\u5341")) {
-    const [left, right] = token.split("\u5341");
+  if (token.includes("十")) {
+    const [left, right] = token.split("十");
     const tens = left ? chineseDigits[left] : 1;
     const ones = right ? chineseDigits[right] : 0;
-    return tens === undefined || ones === undefined ? undefined : tens * 10 + ones;
+    return tens === undefined || ones === undefined
+      ? undefined
+      : tens * 10 + ones;
   }
 
   return chineseDigits[token];
 }
 
-function resolveTargetDate(text: string, nowParts: ShanghaiDateParts): Pick<ShanghaiDateParts, "year" | "month" | "day"> {
+function resolveTargetDate(
+  text: string,
+  nowParts: ShanghaiDateParts,
+): Pick<ShanghaiDateParts, "year" | "month" | "day"> {
   let dayOffset = 0;
-  const nextWeekMatch = text.match(/\u4e0b\u5468([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/);
+  const nextWeekMatch = text.match(/下周([一二三四五六日天])/);
 
   if (nextWeekMatch) {
     const currentMondayIndex = (nowParts.weekday + 6) % 7;
     const targetWeekday = weekdayDigits[nextWeekMatch[1]];
     const targetMondayIndex = targetWeekday === 0 ? 6 : targetWeekday - 1;
     dayOffset = 7 - currentMondayIndex + targetMondayIndex;
-  } else if (text.includes("\u540e\u5929")) {
+  } else if (text.includes("后天")) {
     dayOffset = 2;
   } else if (
-    text.includes("\u660e\u5929") ||
-    text.includes("\u660e\u65e9") ||
-    text.includes("\u660e\u665a")
+    text.includes("明天") ||
+    text.includes("明早") ||
+    text.includes("明晚")
   ) {
     dayOffset = 1;
   }
@@ -227,15 +235,15 @@ function adjustHourByPeriod(text: string, hour: number): number {
   }
 
   if (
-    text.includes("\u4e0b\u5348") ||
-    text.includes("\u665a\u4e0a") ||
-    text.includes("\u4eca\u665a") ||
-    text.includes("\u660e\u665a")
+    text.includes("下午") ||
+    text.includes("晚上") ||
+    text.includes("今晚") ||
+    text.includes("明晚")
   ) {
     return hour === 12 ? 12 : hour + 12;
   }
 
-  if (text.includes("\u4e2d\u5348") && hour < 11) {
+  if (text.includes("中午") && hour < 11) {
     return hour + 12;
   }
 
@@ -254,29 +262,8 @@ function extractReminderContent(text: string): string {
     .replace(triggerPattern, "")
     .replace(datePattern, "")
     .replace(periodPattern, "")
-    .replace(/^[\s\uff0c\u3002\uff1a:,\.\u3001]+|[\s\uff0c\u3002\uff1a:,\.\u3001]+$/g, "")
+    .replace(/^[\s，。：:,.、]+|[\s，。：:,.、]+$/g, "")
     .trim();
-}
-
-function getShanghaiParts(date: Date): ShanghaiDateParts {
-  const shifted = new Date(date.getTime() + shanghaiOffsetMs);
-
-  return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-    hour: shifted.getUTCHours(),
-    minute: shifted.getUTCMinutes(),
-    second: shifted.getUTCSeconds(),
-    weekday: shifted.getUTCDay(),
-  };
-}
-
-function fromShanghaiParts(parts: ShanghaiDateParts): Date {
-  return new Date(
-    Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) -
-      shanghaiOffsetMs,
-  );
 }
 
 function pad2(value: number): string {

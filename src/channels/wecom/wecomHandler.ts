@@ -4,9 +4,11 @@ import {
   verifyAndDecryptMessage,
   type WecomTextMessage,
 } from "./wecomCrypto";
-import { sendWecomTextMessage } from "./wecomClient";
+import { sendWecomTextMessage } from "../../clients/wecomClient";
+import { readRequiredSearchParam } from "../../lib/http";
+import { toSafeErrorMessage } from "../../lib/errors";
 
-const TEST_REPLY_PREFIX = "\u6536\u5230\u6d4b\u8bd5\u6d88\u606f\uff1a";
+const TEST_REPLY_PREFIX = "收到测试消息：";
 
 export interface WecomEnv {
   WX_CORP_ID: string;
@@ -32,7 +34,10 @@ export async function handleWecomRequest(
   return new Response("Method Not Allowed", { status: 405 });
 }
 
-async function handleGetVerify(request: Request, env: WecomEnv): Promise<Response> {
+async function handleGetVerify(
+  request: Request,
+  env: WecomEnv,
+): Promise<Response> {
   try {
     const url = new URL(request.url);
     const msgSignature = readRequiredSearchParam(url, "msg_signature");
@@ -112,9 +117,16 @@ async function handlePostMessage(
   }
 }
 
-async function sendTestReply(env: WecomEnv, message: WecomTextMessage): Promise<void> {
+async function sendTestReply(
+  env: WecomEnv,
+  message: WecomTextMessage,
+): Promise<void> {
   try {
-    await sendWecomTextMessage(env, message.fromUserName, `${TEST_REPLY_PREFIX}${message.content}`);
+    await sendWecomTextMessage(
+      env,
+      message.fromUserName,
+      `${TEST_REPLY_PREFIX}${message.content}`,
+    );
     console.info("Sent WeCom test reply.", {
       toUser: message.fromUserName,
       contentLength: message.content.length,
@@ -125,22 +137,4 @@ async function sendTestReply(env: WecomEnv, message: WecomTextMessage): Promise<
       error: toSafeErrorMessage(error),
     });
   }
-}
-
-function readRequiredSearchParam(url: URL, key: string): string {
-  const value = url.searchParams.get(key);
-
-  if (!value) {
-    throw new Error(`Missing required search parameter: ${key}.`);
-  }
-
-  return value;
-}
-
-function toSafeErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
 }

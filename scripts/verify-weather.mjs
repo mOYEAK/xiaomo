@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { runAgent } from "../dist/verify/agentCore.js";
-import { createSupabaseUserPreferenceStore } from "../dist/verify/userPreferenceStore.js";
+import { runAgent } from "../dist/verify/core/agent/agent.js";
+import { createSupabaseUserPreferenceStore } from "../dist/verify/stores/userPreferenceStore.js";
 import {
   createOpenMeteoWeatherClient,
   extractWeatherLocation,
   resolveWeatherDate,
-} from "../dist/verify/weatherClient.js";
+} from "../dist/verify/clients/weatherClient.js";
 
 const now = new Date("2026-06-06T04:00:00.000Z");
 
@@ -24,8 +24,14 @@ function verifyParsing() {
   assert.equal(extractWeatherLocation("明天上海天气怎么样"), "上海");
   assert.equal(extractWeatherLocation("北京会下雨吗"), "北京");
   assert.equal(extractWeatherLocation("今天天气怎么样"), null);
-  assert.deepEqual(resolveWeatherDate("明天天气", now), { date: "2026-06-07", label: "明天" });
-  assert.deepEqual(resolveWeatherDate("周末天气", now), { date: "2026-06-06", label: "周末" });
+  assert.deepEqual(resolveWeatherDate("明天天气", now), {
+    date: "2026-06-07",
+    label: "明天",
+  });
+  assert.deepEqual(resolveWeatherDate("周末天气", now), {
+    date: "2026-06-06",
+    label: "周末",
+  });
 }
 
 async function verifyOpenMeteoClient() {
@@ -161,7 +167,10 @@ async function verifyPreferenceStore() {
 
   assert.equal(location.name, "上海");
   assert.match(String(calls[0].input), /user_preferences/);
-  assert.equal(calls[1].init.headers.Prefer, "resolution=merge-duplicates,return=minimal");
+  assert.equal(
+    calls[1].init.headers.Prefer,
+    "resolution=merge-duplicates,return=minimal",
+  );
   assert.equal(JSON.parse(calls[1].init.body).user_id, "web-user");
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { runAgent } from "../dist/verify/agentCore.js";
-import { createSupabaseMemoStore } from "../dist/verify/memoStore.js";
+import { runAgent } from "../dist/verify/core/agent/agent.js";
+import { createSupabaseMemoStore } from "../dist/verify/stores/memoStore.js";
 
 async function main() {
   await verifyMemoAgent();
@@ -43,14 +43,17 @@ async function verifyMemoStore() {
   globalThis.fetch = async (input, init = {}) => {
     calls.push({ input, init });
     if (init.method === "POST") {
-      return Response.json([
-        {
-          id: "memo-1",
-          user_id: "web-user",
-          content: "护照放在书桌抽屉",
-          source_message: "记一下：护照放在书桌抽屉",
-        },
-      ], { status: 201 });
+      return Response.json(
+        [
+          {
+            id: "memo-1",
+            user_id: "web-user",
+            content: "护照放在书桌抽屉",
+            source_message: "记一下：护照放在书桌抽屉",
+          },
+        ],
+        { status: 201 },
+      );
     }
     if (init.method === "DELETE") return new Response(null, { status: 204 });
     return Response.json([]);
@@ -60,20 +63,35 @@ async function verifyMemoStore() {
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_SERVICE_ROLE_KEY: "sb_secret_example",
   });
-  await store.createMemo("web-user", "护照放在书桌抽屉", "记一下：护照放在书桌抽屉");
+  await store.createMemo(
+    "web-user",
+    "护照放在书桌抽屉",
+    "记一下：护照放在书桌抽屉",
+  );
   await store.searchMemos("web-user", "护照");
   await store.deleteMemo("web-user", "memo-1");
 
   assert.equal(JSON.parse(calls[0].init.body).content, "护照放在书桌抽屉");
-  assert.equal(new URL(String(calls[1].input)).searchParams.get("content"), "ilike.*护照*");
-  assert.equal(new URL(String(calls[2].input)).searchParams.get("user_id"), "eq.web-user");
+  assert.equal(
+    new URL(String(calls[1].input)).searchParams.get("content"),
+    "ilike.*护照*",
+  );
+  assert.equal(
+    new URL(String(calls[2].input)).searchParams.get("user_id"),
+    "eq.web-user",
+  );
 }
 
 function createMemoryMemoStore() {
   const memos = [];
   return {
     async createMemo(userId, content, sourceMessage) {
-      const memo = { id: "memo-1", user_id: userId, content, source_message: sourceMessage };
+      const memo = {
+        id: "memo-1",
+        user_id: userId,
+        content,
+        source_message: sourceMessage,
+      };
       memos.push(memo);
       return memo;
     },
@@ -81,10 +99,14 @@ function createMemoryMemoStore() {
       return memos;
     },
     async searchMemos(userId, query) {
-      return memos.filter((memo) => memo.user_id === userId && memo.content.includes(query));
+      return memos.filter(
+        (memo) => memo.user_id === userId && memo.content.includes(query),
+      );
     },
     async deleteMemo(userId, id) {
-      const index = memos.findIndex((memo) => memo.user_id === userId && memo.id === id);
+      const index = memos.findIndex(
+        (memo) => memo.user_id === userId && memo.id === id,
+      );
       if (index >= 0) memos.splice(index, 1);
     },
   };

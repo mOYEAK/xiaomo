@@ -1,3 +1,5 @@
+import { DEFAULT_TIMEZONE, toShanghaiDate } from "../lib/time";
+
 export interface WeatherLocation {
   name: string;
   latitude: number;
@@ -18,7 +20,10 @@ export interface DailyWeather {
 
 export interface WeatherClient {
   findLocation(name: string): Promise<WeatherLocation | null>;
-  getDailyForecast(location: WeatherLocation, date: string): Promise<DailyWeather | null>;
+  getDailyForecast(
+    location: WeatherLocation,
+    date: string,
+  ): Promise<DailyWeather | null>;
 }
 
 interface GeocodingResponse {
@@ -53,7 +58,10 @@ export function createOpenMeteoWeatherClient(): WeatherClient {
       url.searchParams.set("format", "json");
 
       const response = await fetch(url);
-      const payload = await readJson<GeocodingResponse>(response, "天气地点查询失败");
+      const payload = await readJson<GeocodingResponse>(
+        response,
+        "天气地点查询失败",
+      );
       const result = payload.results?.[0];
 
       if (
@@ -68,7 +76,7 @@ export function createOpenMeteoWeatherClient(): WeatherClient {
         name: result.name,
         latitude: result.latitude,
         longitude: result.longitude,
-        timezone: result.timezone || "Asia/Shanghai",
+        timezone: result.timezone || DEFAULT_TIMEZONE,
         country: result.country,
         admin1: result.admin1,
       };
@@ -92,7 +100,10 @@ export function createOpenMeteoWeatherClient(): WeatherClient {
       url.searchParams.set("forecast_days", "16");
 
       const response = await fetch(url);
-      const payload = await readJson<ForecastResponse>(response, "天气预报查询失败");
+      const payload = await readJson<ForecastResponse>(
+        response,
+        "天气预报查询失败",
+      );
       const index = payload.daily?.time?.indexOf(date) ?? -1;
 
       if (index < 0 || !payload.daily) {
@@ -116,7 +127,10 @@ export function extractWeatherLocation(text: string): string | null {
   const cleaned = text
     .replace(/(帮我|请|查一下|查询|看看|看一下|告诉我)/g, "")
     .replace(/(今天|今日|明天|后天|本周末|这周末|周末)/g, "")
-    .replace(/(天气怎么样|天气如何|天气|会不会下雨|会下雨吗|下雨吗|下雨|带伞吗|要不要带伞|带伞|冷不冷|热不热|降温吗|降温|气温|温度)/g, "")
+    .replace(
+      /(天气怎么样|天气如何|天气|会不会下雨|会下雨吗|下雨吗|下雨|带伞吗|要不要带伞|带伞|冷不冷|热不热|降温吗|降温|气温|温度)/g,
+      "",
+    )
     .replace(/[？?。,.，！!\s]/g, "")
     .replace(/^(在|的)+|(怎么样|如何|吗|呢|呀|啊)$/g, "")
     .trim();
@@ -124,7 +138,10 @@ export function extractWeatherLocation(text: string): string | null {
   return cleaned || null;
 }
 
-export function resolveWeatherDate(text: string, now = new Date()): {
+export function resolveWeatherDate(
+  text: string,
+  now = new Date(),
+): {
   date: string;
   label: string;
 } {
@@ -165,15 +182,13 @@ export function describeWeatherCode(code: number): string {
 }
 
 export function formatWeatherLocation(location: WeatherLocation): string {
-  return [...new Set([location.admin1, location.name].filter(isString))].join(" ");
+  return [...new Set([location.admin1, location.name].filter(isString))].join(
+    " ",
+  );
 }
 
 function isString(value: string | undefined): value is string {
   return Boolean(value);
-}
-
-function toShanghaiDate(now: Date): Date {
-  return new Date(now.getTime() + 8 * 60 * 60 * 1000);
 }
 
 function formatDate(date: Date): string {

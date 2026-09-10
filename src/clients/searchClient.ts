@@ -23,10 +23,6 @@ interface TavilyResponse {
   };
 }
 
-export function hasSearchConfig(env: SearchEnv): boolean {
-  return Boolean(env.TAVILY_API_KEY);
-}
-
 export function createTavilySearchClient(env: SearchEnv): SearchClient {
   if (!env.TAVILY_API_KEY) {
     throw new Error("Tavily search is not configured.");
@@ -54,7 +50,9 @@ export function createTavilySearchClient(env: SearchEnv): SearchClient {
       const payload = (await response.json()) as TavilyResponse;
 
       if (!response.ok) {
-        throw new Error(`Tavily search failed: ${payload.detail?.error ?? response.statusText}`);
+        throw new Error(
+          `Tavily search failed: ${payload.detail?.error ?? response.statusText}`,
+        );
       }
 
       return (payload.results ?? [])
@@ -71,7 +69,10 @@ export function createTavilySearchClient(env: SearchEnv): SearchClient {
 
 export function extractSearchQuery(text: string): string {
   return text
-    .replace(/^(请|麻烦)?\s*(帮我)?\s*(查一下|搜一下|搜索|帮我查|查查|找一下)\s*/i, "")
+    .replace(
+      /^(请|麻烦)?\s*(帮我)?\s*(查一下|搜一下|搜索|帮我查|查查|找一下)\s*/i,
+      "",
+    )
     .replace(/\s*(的资料|资料)\s*$/i, "")
     .trim();
 }

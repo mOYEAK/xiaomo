@@ -3,7 +3,7 @@ import {
   buildJinaReaderUrl,
   createJinaWebReader,
   extractFirstUrl,
-} from "../dist/verify/webReader.js";
+} from "../dist/verify/clients/webReader.js";
 
 async function main() {
   verifyUrlExtraction();
@@ -20,14 +20,14 @@ async function main() {
 
 function verifyUrlExtraction() {
   assert.equal(
-    extractFirstUrl("\u5e2e\u6211\u603b\u7ed3 https://example.com/article \u8fd9\u7bc7\u6587\u7ae0"),
+    extractFirstUrl("帮我总结 https://example.com/article 这篇文章"),
     "https://example.com/article",
   );
   assert.equal(
     extractFirstUrl("https://one.example/a https://two.example/b"),
     "https://one.example/a",
   );
-  assert.equal(extractFirstUrl("\u6ca1\u6709\u94fe\u63a5"), undefined);
+  assert.equal(extractFirstUrl("没有链接"), undefined);
 }
 
 function verifyJinaUrlConstruction() {
@@ -51,7 +51,10 @@ async function verifyReadAndTruncate() {
   const reader = createJinaWebReader({ maxCharacters: 5 });
   const document = await reader.read("https://example.com/article");
 
-  assert.equal(String(calls[0].input), "https://r.jina.ai/https://example.com/article");
+  assert.equal(
+    String(calls[0].input),
+    "https://r.jina.ai/https://example.com/article",
+  );
   assert.equal(document.url, "https://example.com/article");
   assert.equal(document.content, "12345");
   assert.equal(document.truncated, true);
@@ -66,9 +69,12 @@ async function verifyDirectFallback() {
       return new Response("blocked", { status: 403 });
     }
 
-    return new Response("<html><style>hidden</style><body><h1>Hello</h1><p>World</p></body></html>", {
-      status: 200,
-    });
+    return new Response(
+      "<html><style>hidden</style><body><h1>Hello</h1><p>World</p></body></html>",
+      {
+        status: 200,
+      },
+    );
   };
 
   const reader = createJinaWebReader();
@@ -86,7 +92,7 @@ async function verifyAccessRestriction() {
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    return new Response("\u53d7\u533a\u57df\u9650\u5236\uff0c\u8bf7\u5148\u767b\u5f55\u518d\u4f7f\u7528\u3002", {
+    return new Response("受区域限制，请先登录再使用。", {
       status: 200,
     });
   };
@@ -118,7 +124,10 @@ async function verifyEmptyContent() {
   globalThis.fetch = async () => new Response("   ", { status: 200 });
   const reader = createJinaWebReader();
 
-  await assert.rejects(() => reader.read("https://example.com"), /empty content/);
+  await assert.rejects(
+    () => reader.read("https://example.com"),
+    /empty content/,
+  );
 }
 
 async function verifyTimeout() {

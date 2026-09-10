@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { createOpenAiCompatibleLlmClient, hasLlmConfig } from "../dist/verify/llmClient.js";
+import { createOpenAiCompatibleLlmClient } from "../dist/verify/clients/llmClient.js";
+import { hasLlmConfig } from "../dist/verify/config/env.js";
 
 const env = {
   LLM_API_KEY: "test-key",
@@ -28,18 +29,29 @@ async function verifyCompletion() {
     calls.push({ input, init });
     return new Response(
       JSON.stringify({
-        choices: [{ message: { content: "\u4f60\u597d\uff0c\u6211\u53ef\u4ee5\u5e2e\u4f60\u3002" } }],
+        choices: [
+          {
+            message: {
+              content: "\u4f60\u597d\uff0c\u6211\u53ef\u4ee5\u5e2e\u4f60\u3002",
+            },
+          },
+        ],
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
 
   const client = createOpenAiCompatibleLlmClient(env);
-  const reply = await client.complete([{ role: "user", content: "\u4f60\u597d" }]);
+  const reply = await client.complete([
+    { role: "user", content: "\u4f60\u597d" },
+  ]);
 
   assert.equal(reply, "\u4f60\u597d\uff0c\u6211\u53ef\u4ee5\u5e2e\u4f60\u3002");
   assert.equal(calls.length, 1);
-  assert.equal(String(calls[0].input), "https://api.moonshot.cn/v1/chat/completions");
+  assert.equal(
+    String(calls[0].input),
+    "https://api.moonshot.cn/v1/chat/completions",
+  );
   assert.equal(calls[0].init.method, "POST");
   assert.equal(calls[0].init.headers.Authorization, "Bearer test-key");
 

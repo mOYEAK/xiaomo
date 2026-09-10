@@ -1,5 +1,13 @@
-import { runAgent, type AgentInput, type AgentOutput, type AgentRuntime } from "./agentCore";
-import { createAgentRuntime, type AgentRuntimeEnv } from "./agentRuntime";
+import {
+  runAgent,
+  type AgentInput,
+  type AgentOutput,
+} from "../../core/agent/agent";
+import {
+  createAgentRuntime,
+  type AgentRuntime,
+  type AgentRuntimeEnv,
+} from "../../core/agent/runtime";
 import {
   buildEmptyReply,
   decryptOfficialAccountMessage,
@@ -9,15 +17,21 @@ import {
   verifyPlainSignature,
   type OfficialAccountEnv,
   type OfficialAccountTextMessage,
-} from "./wechatOfficial";
-import { sendOfficialAccountCustomTextMessage } from "./wechatOfficialClient";
+} from "./officialAccount";
+import { sendOfficialAccountCustomTextMessage } from "../../clients/officialAccountClient";
+import { readRequiredSearchParam } from "../../lib/http";
+import { toSafeErrorMessage } from "../../lib/errors";
 
 export interface MpEnv extends OfficialAccountEnv, AgentRuntimeEnv {}
 
 export interface MpHandlerDependencies {
   createRuntime(env: AgentRuntimeEnv): AgentRuntime;
   runAgent(input: AgentInput, runtime: AgentRuntime): Promise<AgentOutput>;
-  sendCustomTextMessage(env: OfficialAccountEnv, toUser: string, content: string): Promise<void>;
+  sendCustomTextMessage(
+    env: OfficialAccountEnv,
+    toUser: string,
+    content: string,
+  ): Promise<void>;
 }
 
 const defaultDependencies: MpHandlerDependencies = {
@@ -43,14 +57,22 @@ export async function handleMpRequest(
   return new Response("Method Not Allowed", { status: 405 });
 }
 
-async function handleGetVerify(request: Request, env: OfficialAccountEnv): Promise<Response> {
+async function handleGetVerify(
+  request: Request,
+  env: OfficialAccountEnv,
+): Promise<Response> {
   try {
     const url = new URL(request.url);
     const signature = readRequiredSearchParam(url, "signature");
     const timestamp = readRequiredSearchParam(url, "timestamp");
     const nonce = readRequiredSearchParam(url, "nonce");
     const echostr = readRequiredSearchParam(url, "echostr");
-    const verified = await verifyPlainSignature(env.MP_TOKEN, timestamp, nonce, signature);
+    const verified = await verifyPlainSignature(
+      env.MP_TOKEN,
+      timestamp,
+      nonce,
+      signature,
+    );
 
     if (!verified) {
       return new Response("Forbidden", { status: 403 });
@@ -82,14 +104,23 @@ async function handlePostMessage(
     const timestamp = readRequiredSearchParam(url, "timestamp");
     const nonce = readRequiredSearchParam(url, "nonce");
     const xmlText = await request.text();
-    const plaintextXml = await resolveMessageXml(url, xmlText, env, timestamp, nonce);
+    const plaintextXml = await resolveMessageXml(
+      url,
+      xmlText,
+      env,
+      timestamp,
+      nonce,
+    );
     const message = parseOfficialAccountTextMessage(plaintextXml);
 
     if (message.msgType !== "text") {
-      console.info("Ignored unsupported WeChat Official Account message type.", {
-        fromUser: message.fromUserName,
-        msgType: message.msgType,
-      });
+      console.info(
+        "Ignored unsupported WeChat Official Account message type.",
+        {
+          fromUser: message.fromUserName,
+          msgType: message.msgType,
+        },
+      );
 
       return buildEmptyReply();
     }
@@ -168,7 +199,12 @@ async function resolveMessageXml(
 ): Promise<string> {
   if (url.searchParams.get("encrypt_type") !== "aes") {
     const signature = readRequiredSearchParam(url, "signature");
-    const verified = await verifyPlainSignature(env.MP_TOKEN, timestamp, nonce, signature);
+    const verified = await verifyPlainSignature(
+      env.MP_TOKEN,
+      timestamp,
+      nonce,
+      signature,
+    );
 
     if (!verified) {
       throw new Error("Invalid WeChat Official Account plaintext signature.");
@@ -178,7 +214,9 @@ async function resolveMessageXml(
   }
 
   if (!env.MP_APP_ID || !env.MP_ENCODING_AES_KEY) {
-    throw new Error("Encrypted WeChat Official Account messages require MP_APP_ID and MP_ENCODING_AES_KEY.");
+    throw new Error(
+      "Encrypted WeChat Official Account messages require MP_APP_ID and MP_ENCODING_AES_KEY.",
+    );
   }
 
   const msgSignature = readRequiredSearchParam(url, "msg_signature");
@@ -192,26 +230,14 @@ async function resolveMessageXml(
   );
 
   if (!verified) {
-    throw new Error("Invalid WeChat Official Account encrypted message signature.");
+    throw new Error(
+      "Invalid WeChat Official Account encrypted message signature.",
+    );
   }
 
-  return decryptOfficialAccountMessage(encrypted, env.MP_ENCODING_AES_KEY, env.MP_APP_ID);
-}
-
-function readRequiredSearchParam(url: URL, key: string): string {
-  const value = url.searchParams.get(key);
-
-  if (!value) {
-    throw new Error(`Missing required search parameter: ${key}.`);
-  }
-
-  return value;
-}
-
-function toSafeErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
+  return decryptOfficialAccountMessage(
+    encrypted,
+    env.MP_ENCODING_AES_KEY,
+    env.MP_APP_ID,
+  );
 }

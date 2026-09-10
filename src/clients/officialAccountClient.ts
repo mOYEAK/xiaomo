@@ -1,4 +1,4 @@
-import type { OfficialAccountEnv } from "./wechatOfficial";
+import type { OfficialAccountEnv } from "../channels/mp/officialAccount";
 
 interface AccessTokenResponse {
   errcode?: number;
@@ -21,10 +21,15 @@ export async function sendOfficialAccountCustomTextMessage(
   content: string,
 ): Promise<void> {
   if (!env.MP_APP_ID || !env.MP_APP_SECRET) {
-    throw new Error("MP_APP_ID and MP_APP_SECRET are required for custom messages.");
+    throw new Error(
+      "MP_APP_ID and MP_APP_SECRET are required for custom messages.",
+    );
   }
 
-  const accessToken = await getOfficialAccountAccessToken(env.MP_APP_ID, env.MP_APP_SECRET);
+  const accessToken = await getOfficialAccountAccessToken(
+    env.MP_APP_ID,
+    env.MP_APP_SECRET,
+  );
   const url = new URL("https://api.weixin.qq.com/cgi-bin/message/custom/send");
   url.searchParams.set("access_token", accessToken);
 
@@ -44,7 +49,9 @@ export async function sendOfficialAccountCustomTextMessage(
   const payload = (await response.json()) as CustomMessageResponse;
 
   if (!response.ok || payload.errcode !== 0) {
-    throw new Error(`Failed to send WeChat Official Account custom message: ${payload.errmsg ?? response.statusText}`);
+    throw new Error(
+      `Failed to send WeChat Official Account custom message: ${payload.errmsg ?? response.statusText}`,
+    );
   }
 }
 
@@ -73,7 +80,10 @@ export function truncateOfficialAccountText(content: string): string {
   return `${result}${truncationSuffix}`;
 }
 
-async function getOfficialAccountAccessToken(appId: string, appSecret: string): Promise<string> {
+async function getOfficialAccountAccessToken(
+  appId: string,
+  appSecret: string,
+): Promise<string> {
   const url = new URL("https://api.weixin.qq.com/cgi-bin/token");
   url.searchParams.set("grant_type", "client_credential");
   url.searchParams.set("appid", appId);
@@ -83,7 +93,9 @@ async function getOfficialAccountAccessToken(appId: string, appSecret: string): 
   const payload = (await response.json()) as AccessTokenResponse;
 
   if (!response.ok || !payload.access_token) {
-    throw new Error(`Failed to get WeChat Official Account access_token: ${payload.errmsg ?? response.statusText}`);
+    throw new Error(
+      `Failed to get WeChat Official Account access_token: ${payload.errmsg ?? response.statusText}`,
+    );
   }
 
   return payload.access_token;

@@ -28,10 +28,6 @@ export interface LlmClientOptions {
   timeoutMs?: number;
 }
 
-export function hasLlmConfig(env: LlmEnv): boolean {
-  return Boolean(env.LLM_API_KEY && env.LLM_BASE_URL && env.LLM_MODEL);
-}
-
 export function createOpenAiCompatibleLlmClient(
   env: LlmEnv,
   options: LlmClientOptions = {},
@@ -67,7 +63,9 @@ export function createOpenAiCompatibleLlmClient(
         const payload = (await response.json()) as ChatCompletionResponse;
 
         if (!response.ok) {
-          throw new Error(`LLM request failed: ${payload.error?.message ?? response.statusText}`);
+          throw new Error(
+            `LLM request failed: ${payload.error?.message ?? response.statusText}`,
+          );
         }
 
         const content = payload.choices?.[0]?.message?.content?.trim();
@@ -79,7 +77,7 @@ export function createOpenAiCompatibleLlmClient(
         return content;
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-          throw new Error("LLM request timed out.");
+          throw new Error("LLM request timed out.", { cause: error });
         }
 
         throw error;
